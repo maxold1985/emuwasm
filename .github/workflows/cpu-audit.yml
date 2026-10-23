@@ -27,6 +27,10 @@ jobs:
           cp -a boxedwine-upstream/source/kernel engine/
           cp -a boxedwine-upstream/source/util engine/
           cp -a boxedwine-upstream/source/io engine/
+          # fpu.h uses a relative path from engine/emulation/cpu/common
+          # resolving to the repository-root lib/softfloat directory.
+          mkdir -p lib
+          cp -a boxedwine-upstream/lib/softfloat lib/
           find engine/emulation/cpu engine/emulation/softmmu -type f \( -name '*.cpp' -o -name '*.h' \) | sort > cpu-files.txt
           echo "Original CPU/MMU files: $(wc -l < cpu-files.txt)"
       - name: Upload original source manifest
