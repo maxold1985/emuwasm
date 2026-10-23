@@ -73,6 +73,64 @@ if(EMUWASM_BUILD_EXTRACTED)
         target_compile_features(emuwasm_boxedwine_util PRIVATE cxx_std_20)
         target_include_directories(emuwasm_boxedwine_util PRIVATE
             $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
+        # Build the exact upstream Berkeley SoftFloat distribution with its
+        # original x86-64 Makefile. The Makefile selects the 8086-SSE variant
+        # and supplies SOFTFLOAT_FAST_INT64/platform.h (do not compile all
+        # architecture specializations together).
+        if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR EMSCRIPTEN)
+            message(FATAL_ERROR "Full upstream runtime probe currently targets native Linux")
+        endif()
+        find_program(BOXEDWINE_MAKE NAMES make gmake REQUIRED)
+        set(BOXEDWINE_SOFTFLOAT_DIR
+            "${CMAKE_CURRENT_SOURCE_DIR}/lib/softfloat/build/Linux-x86_64-GCC")
+        set(BOXEDWINE_SOFTFLOAT_ARCHIVE
+            "${BOXEDWINE_SOFTFLOAT_DIR}/softfloat.a")
+        add_custom_command(
+            OUTPUT "${BOXEDWINE_SOFTFLOAT_ARCHIVE}"
+            COMMAND "${BOXEDWINE_MAKE}" -j2
+            WORKING_DIRECTORY "${BOXEDWINE_SOFTFLOAT_DIR}"
+            COMMENT "Building original upstream x86 SoftFloat"
+            VERBATIM)
+        add_custom_target(emuwasm_softfloat_build
+            DEPENDS "${BOXEDWINE_SOFTFLOAT_ARCHIVE}")
+        add_library(emuwasm_softfloat STATIC IMPORTED GLOBAL)
+        set_target_properties(emuwasm_softfloat PROPERTIES
+            IMPORTED_LOCATION "${BOXEDWINE_SOFTFLOAT_ARCHIVE}")
+        add_dependencies(emuwasm_softfloat emuwasm_softfloat_build)
+
+        # Native Linux platform and SDL host services from upstream sources.
+        # These retain the original relative include paths under platform/.
+        find_package(SDL2 CONFIG REQUIRED)
+        find_package(Threads REQUIRED)
+        add_library(emuwasm_boxedwine_platform STATIC
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/linux/platform.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/linux/platformThreads.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl/knativesystem.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl/knativethread.cpp")
+        target_compile_features(emuwasm_boxedwine_platform PRIVATE cxx_std_20)
+        target_include_directories(emuwasm_boxedwine_platform PRIVATE
+            $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl"
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/linux"
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/source/x11")
+        target_link_libraries(emuwasm_boxedwine_platform PUBLIC SDL2::SDL2 Threads::Threads)
+
+        # The headless interpreter still links X11 and GL dispatch symbols
+        # because the original CPU and kernel reference them.
+        file(GLOB BOXEDWINE_X11_SOURCES CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/source/x11/*.cpp")
+        file(GLOB BOXEDWINE_GL_SOURCES CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/source/opengl/*.cpp")
+        add_library(emuwasm_boxedwine_display STATIC
+            ${BOXEDWINE_X11_SOURCES} ${BOXEDWINE_GL_SOURCES})
+        target_compile_features(emuwasm_boxedwine_display PRIVATE cxx_std_20)
+        target_include_directories(emuwasm_boxedwine_display PRIVATE
+            $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl"
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/source/opengl"
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/source/x11")
+        target_compile_definitions(emuwasm_boxedwine_display PRIVATE GLH=<SDL_opengl.h>)
+        target_link_libraries(emuwasm_boxedwine_display PUBLIC SDL2::SDL2)
         if(NOT EMUWASM_BUILD_KERNEL_OBJECTS)
             message(FATAL_ERROR "EMUWASM_BUILD_X86_TEST requires EMUWASM_BUILD_KERNEL_OBJECTS=ON")
         endif()
@@ -80,8 +138,14 @@ if(EMUWASM_BUILD_EXTRACTED)
         target_compile_features(emuwasm_x86_execution PRIVATE cxx_std_20)
         target_include_directories(emuwasm_x86_execution PRIVATE
             $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
+        # Group static archives to resolve circular references among the
+        # original CPU/kernel/filesystem/platform/graphics runtime libraries.
         target_link_libraries(emuwasm_x86_execution PRIVATE
-            emuwasm_boxedwine emuwasm_boxedwine_kernel emuwasm_boxedwine_util emuwasm_boxedwine_io)
+            "-Wl,--start-group"
+            emuwasm_boxedwine emuwasm_boxedwine_kernel
+            emuwasm_boxedwine_util emuwasm_boxedwine_io
+            emuwasm_boxedwine_platform emuwasm_boxedwine_display emuwasm_softfloat
+            "-Wl,--end-group")
         if(NOT EMSCRIPTEN)
             add_test(NAME boxedwine_x86_execution COMMAND emuwasm_x86_execution)
         endif()
