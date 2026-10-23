@@ -5,6 +5,10 @@
 #include <cstdio>
 
 int main() {
+    // Initialize BoxedWine's scheduler, guest page size and soft-MMU backing
+    // before constructing the first process. Keep linear 4 GiB reservation off
+    // in this small headless execution test.
+    KSystem::init(true);
     // KProcess::create establishes the address space; createThread wires
     // CPU::thread and CPU::memory to the actual BoxedWine runtime.
     KProcessPtr process = KProcess::create();
