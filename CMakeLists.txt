@@ -101,7 +101,10 @@ if(EMUWASM_BUILD_EXTRACTED)
             "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/linux/platform.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/linux/platformThreads.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl/knativesystem.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl/knativethread.cpp")
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl/knativethread.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl/knativescreenSDL.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl/knativeinputSDL.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl/sdlcallback.cpp")
         target_compile_features(emuwasm_boxedwine_platform PRIVATE cxx_std_20)
         # The upstream SDL host defines its own main() unless built for tests.
         target_compile_definitions(emuwasm_boxedwine_platform PRIVATE __TEST)
