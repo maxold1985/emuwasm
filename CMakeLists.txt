@@ -108,6 +108,8 @@ if(EMUWASM_BUILD_EXTRACTED)
             "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl/knativesystem.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl/knativethread.cpp")
         target_compile_features(emuwasm_boxedwine_platform PRIVATE cxx_std_20)
+        # The upstream SDL host defines its own main() unless built for tests.
+        target_compile_definitions(emuwasm_boxedwine_platform PRIVATE __TEST)
         target_include_directories(emuwasm_boxedwine_platform PRIVATE
             $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>
             "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl"
