@@ -29,6 +29,7 @@ jobs:
           cp -a boxedwine-upstream/source/emulation/cpu engine/emulation/
           cp -a boxedwine-upstream/source/emulation/softmmu engine/emulation/
           cp -a boxedwine-upstream/source/kernel engine/
+          # Include procfs classes used by kernel and the filesystem implementation.
           cp -a boxedwine-upstream/source/util engine/
           cp -a boxedwine-upstream/source/io engine/
           # kprocess.cpp includes ../x11/x11.h from the original source tree.
