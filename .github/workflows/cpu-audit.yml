@@ -31,6 +31,7 @@ jobs:
           # resolving to the repository-root lib/softfloat directory.
           mkdir -p lib
           cp -a boxedwine-upstream/lib/softfloat lib/
+          cp -a boxedwine-upstream/lib/simde lib/
           find engine/emulation/cpu engine/emulation/softmmu -type f \( -name '*.cpp' -o -name '*.h' \) | sort > cpu-files.txt
           echo "Original CPU/MMU files: $(wc -l < cpu-files.txt)"
       - name: Upload original source manifest
