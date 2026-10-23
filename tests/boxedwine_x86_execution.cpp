@@ -93,7 +93,7 @@ int main() {
 
     // Execute the real BoxedWine Linux i386 syscall handler (sys_exit).
     // Do not access the KThread/CPU after exit: process teardown may free it.
-    thread->cpu->runNextSingleOp();
+    thread->cpu->run();
     std::printf("Guest exit: terminated=%d status=%u\\n",
                 process->terminated ? 1 : 0, process->exitCode);
     return process->terminated && process->exitCode == 30 ? 0 : 8;
