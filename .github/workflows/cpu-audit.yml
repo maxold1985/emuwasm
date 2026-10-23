@@ -27,6 +27,9 @@ jobs:
           cp -a boxedwine-upstream/source/kernel engine/
           cp -a boxedwine-upstream/source/util engine/
           cp -a boxedwine-upstream/source/io engine/
+          # Some original headers refer to ../../source/util relative to engine/emulation.
+          # Preserve that expected source tree instead of editing upstream headers.
+          ln -s "$GITHUB_WORKSPACE/boxedwine-upstream/source" engine/source
           # fpu.h uses a relative path from engine/emulation/cpu/common
           # resolving to the repository-root lib/softfloat directory.
           mkdir -p lib
