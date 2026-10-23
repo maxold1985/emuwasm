@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(EMUWASM_BUILD_KERNEL_OBJECTS "Compile original BoxedWine kernel implementation objects (dependency audit)" OFF)
 option(EMUWASM_BUILD_EXTRACTED "Attempt to compile extracted BoxedWine CPU/MMU sources (experimental)" OFF)
 
 add_library(emuwasm_probe STATIC src/probe.cpp)
@@ -33,6 +34,20 @@ if(EMUWASM_BUILD_EXTRACTED)
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/emulation/softmmu"
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/kernel"
         "${CMAKE_CURRENT_SOURCE_DIR}/third_party/boxedwine_include")
+    if(EMUWASM_BUILD_KERNEL_OBJECTS)
+        # Compile upstream kernel objects without linking a runnable executable yet.
+        # These files depend on the larger BoxedWine runtime (FS, scheduler, signals).
+        file(GLOB BOXEDWINE_KERNEL_SOURCES CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/engine/kernel/*.cpp")
+        if(NOT BOXEDWINE_KERNEL_SOURCES)
+            message(FATAL_ERROR "No original BoxedWine kernel sources found")
+        endif()
+        add_library(emuwasm_boxedwine_kernel OBJECT ${BOXEDWINE_KERNEL_SOURCES})
+        target_compile_features(emuwasm_boxedwine_kernel PRIVATE cxx_std_20)
+        target_include_directories(emuwasm_boxedwine_kernel PRIVATE
+            $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
+    endif()
+
     # Compile the real upstream CPU API contract as a separate object.
     # An object target avoids falsely claiming a runnable interpreter before
     # KMemory, KThread and their runtime dependencies are linked.
