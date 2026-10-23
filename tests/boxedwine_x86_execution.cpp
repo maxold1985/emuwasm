@@ -9,10 +9,12 @@ int main() {
     // before constructing the first process. Keep linear 4 GiB reservation off
     // in this small headless execution test.
     KSystem::init(true);
-    // KProcess::create establishes the address space; createThread wires
-    // CPU::thread and CPU::memory to the actual BoxedWine runtime.
+    // KProcess::create publishes the process but does not allocate its memory.
+    // BoxedWine normally calls KMemory::create before createThread in startProcess.
     KProcessPtr process = KProcess::create();
     if (!process) return 1;
+    process->memory = KMemory::create(process.get());
+    if (!process->memory) return 7;
     KThread* thread = process->createThread();
     if (!thread || !thread->cpu || !thread->memory) return 2;
 
