@@ -18,6 +18,11 @@ int main() {
     KThread* thread = process->createThread();
     if (!thread || !thread->cpu || !thread->memory) return 2;
 
+    // The soft-MMU resolves guest RAM using the current host thread.
+    // BoxedWine's normal process startup sets this immediately after
+    // creating the guest KThread, before any guest memory access.
+    KThread::setCurrentThread(thread);
+
     // mov eax, 10 ; add eax, 20 (32-bit x86)
     constexpr U8 instructions[] = {
         0xB8, 0x0A, 0x00, 0x00, 0x00,
