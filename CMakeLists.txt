@@ -57,6 +57,16 @@ if(EMUWASM_BUILD_EXTRACTED)
         find_package(CURL REQUIRED)
         add_library(emuwasm_boxedwine_util STATIC ${BOXEDWINE_UTIL_SOURCES})
         target_link_libraries(emuwasm_boxedwine_util PUBLIC CURL::libcurl)
+        # Original filesystem and procfs implementations referenced by KProcess.
+        file(GLOB BOXEDWINE_IO_SOURCES CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/engine/io/*.cpp")
+        file(GLOB BOXEDWINE_PROC_SOURCES CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/engine/kernel/proc/*.cpp")
+        add_library(emuwasm_boxedwine_io STATIC
+            ${BOXEDWINE_IO_SOURCES} ${BOXEDWINE_PROC_SOURCES})
+        target_compile_features(emuwasm_boxedwine_io PRIVATE cxx_std_20)
+        target_include_directories(emuwasm_boxedwine_io PRIVATE
+            $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
         target_compile_features(emuwasm_boxedwine_util PRIVATE cxx_std_20)
         target_include_directories(emuwasm_boxedwine_util PRIVATE
             $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
@@ -68,7 +78,7 @@ if(EMUWASM_BUILD_EXTRACTED)
         target_include_directories(emuwasm_x86_execution PRIVATE
             $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
         target_link_libraries(emuwasm_x86_execution PRIVATE
-            emuwasm_boxedwine emuwasm_boxedwine_kernel emuwasm_boxedwine_util)
+            emuwasm_boxedwine emuwasm_boxedwine_kernel emuwasm_boxedwine_util emuwasm_boxedwine_io)
         if(NOT EMSCRIPTEN)
             add_test(NAME boxedwine_x86_execution COMMAND emuwasm_x86_execution)
         endif()
