@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(EMUWASM_BUILD_X86_TEST "Build real BoxedWine x86 execution test (requires full upstream runtime)" OFF)
 option(EMUWASM_BUILD_KERNEL_OBJECTS "Compile original BoxedWine kernel implementation objects (dependency audit)" OFF)
 option(EMUWASM_BUILD_EXTRACTED "Attempt to compile extracted BoxedWine CPU/MMU sources (experimental)" OFF)
 
@@ -46,6 +47,21 @@ if(EMUWASM_BUILD_EXTRACTED)
         target_compile_features(emuwasm_boxedwine_kernel PRIVATE cxx_std_20)
         target_include_directories(emuwasm_boxedwine_kernel PRIVATE
             $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
+    endif()
+
+    if(EMUWASM_BUILD_X86_TEST)
+        if(NOT EMUWASM_BUILD_KERNEL_OBJECTS)
+            message(FATAL_ERROR "EMUWASM_BUILD_X86_TEST requires EMUWASM_BUILD_KERNEL_OBJECTS=ON")
+        endif()
+        add_executable(emuwasm_x86_execution tests/boxedwine_x86_execution.cpp)
+        target_compile_features(emuwasm_x86_execution PRIVATE cxx_std_20)
+        target_include_directories(emuwasm_x86_execution PRIVATE
+            $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
+        target_link_libraries(emuwasm_x86_execution PRIVATE
+            emuwasm_boxedwine emuwasm_boxedwine_kernel)
+        if(NOT EMSCRIPTEN)
+            add_test(NAME boxedwine_x86_execution COMMAND emuwasm_x86_execution)
+        endif()
     endif()
 
     # Compile the real upstream CPU API contract as a separate object.
