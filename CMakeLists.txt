@@ -50,6 +50,14 @@ if(EMUWASM_BUILD_EXTRACTED)
     endif()
 
     if(EMUWASM_BUILD_X86_TEST)
+        # Compile the upstream utility implementations required by kernel/CPU
+        # (BString, synchronization, logging, file helpers). No replacements.
+        file(GLOB BOXEDWINE_UTIL_SOURCES CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/engine/util/*.cpp")
+        add_library(emuwasm_boxedwine_util STATIC ${BOXEDWINE_UTIL_SOURCES})
+        target_compile_features(emuwasm_boxedwine_util PRIVATE cxx_std_20)
+        target_include_directories(emuwasm_boxedwine_util PRIVATE
+            $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
         if(NOT EMUWASM_BUILD_KERNEL_OBJECTS)
             message(FATAL_ERROR "EMUWASM_BUILD_X86_TEST requires EMUWASM_BUILD_KERNEL_OBJECTS=ON")
         endif()
@@ -58,7 +66,7 @@ if(EMUWASM_BUILD_EXTRACTED)
         target_include_directories(emuwasm_x86_execution PRIVATE
             $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
         target_link_libraries(emuwasm_x86_execution PRIVATE
-            emuwasm_boxedwine emuwasm_boxedwine_kernel)
+            emuwasm_boxedwine emuwasm_boxedwine_kernel emuwasm_boxedwine_util)
         if(NOT EMSCRIPTEN)
             add_test(NAME boxedwine_x86_execution COMMAND emuwasm_x86_execution)
         endif()
