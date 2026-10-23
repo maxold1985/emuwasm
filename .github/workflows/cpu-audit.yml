@@ -27,6 +27,8 @@ jobs:
           cp -a boxedwine-upstream/source/kernel engine/
           cp -a boxedwine-upstream/source/util engine/
           cp -a boxedwine-upstream/source/io engine/
+          # kprocess.cpp includes ../x11/x11.h from the original source tree.
+          cp -a boxedwine-upstream/source/x11 engine/
           # Some original headers refer to ../../source/util relative to engine/emulation.
           # Preserve that expected source tree instead of editing upstream headers.
           ln -s "$GITHUB_WORKSPACE/boxedwine-upstream/source" engine/source
