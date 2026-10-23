@@ -84,10 +84,11 @@ if(EMUWASM_BUILD_EXTRACTED)
             "${BOXEDWINE_SOFTFLOAT_ROOT}/source/8086-SSE/*.c")
         add_library(emuwasm_softfloat STATIC
             ${BOXEDWINE_SOFTFLOAT_CORE} ${BOXEDWINE_SOFTFLOAT_X86})
+        # Prioritize the Linux target's platform.h over source/include/platform.h.
         target_include_directories(emuwasm_softfloat PRIVATE
-            "${BOXEDWINE_SOFTFLOAT_ROOT}/source/include"
+            "${BOXEDWINE_SOFTFLOAT_ROOT}/build/Linux-x86_64-GCC"
             "${BOXEDWINE_SOFTFLOAT_ROOT}/source/8086-SSE"
-            "${BOXEDWINE_SOFTFLOAT_ROOT}/build/Linux-x86_64-GCC")
+            "${BOXEDWINE_SOFTFLOAT_ROOT}/source/include")
         target_compile_definitions(emuwasm_softfloat PRIVATE
             SOFTFLOAT_FAST_INT64 SOFTFLOAT_ROUND_ODD INLINE_LEVEL=5
             SOFTFLOAT_FAST_DIV32TO16 SOFTFLOAT_FAST_DIV64TO32)
