@@ -22,6 +22,7 @@ if(EMUWASM_BUILD_EXTRACTED)
     target_include_directories(emuwasm_boxedwine PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/engine"
         "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/simde"
         "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform"
         "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/source"
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/emulation"
