@@ -10,6 +10,10 @@ jobs:
   boxedwine-cpu:
     runs-on: ubuntu-latest
     steps:
+      - name: Install upstream utility dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
       - name: Checkout EmuWasm
         uses: actions/checkout@v4
       - name: Checkout original BoxedWine sources
