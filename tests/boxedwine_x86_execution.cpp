@@ -56,7 +56,7 @@ int main() {
         K_MAP_PRIVATE | K_MAP_ANONYMOUS | K_MAP_FIXED,
         static_cast<FD>(-1), 0);
     if (mapped != address) {
-        std::fprintf(stderr, "guest mmap failed: %08x\\n", mapped);
+        std::fprintf(stderr, "guest mmap failed: %08x\n", mapped);
         return 3;
     }
 
@@ -71,30 +71,30 @@ int main() {
     unsigned steps = 0;
     while (thread->cpu->eip.u32 != exitAddress && steps < maxSteps) {
         if (!thread->cpu->runNextSingleOp()) {
-            std::fprintf(stderr, "interpreter stopped at step %u\\n", steps);
+            std::fprintf(stderr, "interpreter stopped at step %u\n", steps);
             return 4;
         }
         ++steps;
     }
     if (thread->cpu->eip.u32 != exitAddress) {
-        std::fprintf(stderr, "guest did not reach sys_exit after %u steps\\n", steps);
+        std::fprintf(stderr, "guest did not reach sys_exit after %u steps\n", steps);
         return 5;
     }
 
     const U32 eax = thread->cpu->reg[0].u32;
     const U32 ebx = thread->cpu->reg[3].u32;
     const U32 ecx = thread->cpu->reg[1].u32;
-    std::printf("Before exit: EAX=%u EBX=%u ECX=%u steps=%u\\n", eax, ebx, ecx, steps);
+    std::printf("Before exit: EAX=%u EBX=%u ECX=%u steps=%u\n", eax, ebx, ecx, steps);
     std::fflush(stdout);
     if (eax != 1 || ebx != 30 || ecx != 0 || steps != 15) {
-        std::fprintf(stderr, "incorrect loop or register state\\n");
+        std::fprintf(stderr, "incorrect loop or register state\n");
         return 6;
     }
 
     // Execute the real BoxedWine Linux i386 syscall handler (sys_exit).
     // Do not access the KThread/CPU after exit: process teardown may free it.
     thread->cpu->run();
-    std::printf("Guest exit: terminated=%d status=%u\\n",
+    std::printf("Guest exit: terminated=%d status=%u\n",
                 process->terminated ? 1 : 0, process->exitCode);
     return process->terminated && process->exitCode == 30 ? 0 : 8;
 }
