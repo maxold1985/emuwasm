@@ -46,3 +46,21 @@ jobs:
         run: cmake -S . -B build-cpu -DEMUWASM_BUILD_EXTRACTED=ON -DCMAKE_BUILD_TYPE=Release
       - name: Compile original CPU (dependency discovery)
         run: cmake --build build-cpu --parallel 2
+      - name: Verify original CPU execution symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIB=build-cpu/libemuwasm_boxedwine.a
+          test -s "$LIB"
+          nm -C --defined-only "$LIB" > cpu-symbols.txt
+          # Verify the archive contains compiled BoxedWine CPU and instruction implementations.
+          grep -E 'CPU::|NormalCPU::|normalCPU|common_' cpu-symbols.txt > cpu-matching-symbols.txt
+          test -s cpu-matching-symbols.txt
+          echo "Compiled BoxedWine CPU symbols: $(wc -l < cpu-matching-symbols.txt)"
+      - name: Upload compiled CPU symbol inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: boxedwine-cpu-symbols
+          path: |
+            cpu-symbols.txt
+            cpu-matching-symbols.txt
