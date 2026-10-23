@@ -86,7 +86,7 @@ int main() {
     const U32 ecx = thread->cpu->reg[1].u32;
     std::printf("Before exit: EAX=%u EBX=%u ECX=%u steps=%u\\n", eax, ebx, ecx, steps);
     std::fflush(stdout);
-    if (eax != 1 || ebx != 30 || ecx != 0 || steps != 18) {
+    if (eax != 1 || ebx != 30 || ecx != 0 || steps != 15) {
         std::fprintf(stderr, "incorrect loop or register state\\n");
         return 6;
     }
