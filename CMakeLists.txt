@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(EmuWasm VERSION 0.1.0 LANGUAGES CXX)
+project(EmuWasm VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -73,30 +73,24 @@ if(EMUWASM_BUILD_EXTRACTED)
         target_compile_features(emuwasm_boxedwine_util PRIVATE cxx_std_20)
         target_include_directories(emuwasm_boxedwine_util PRIVATE
             $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
-        # Build the exact upstream Berkeley SoftFloat distribution with its
-        # original x86-64 Makefile. The Makefile selects the 8086-SSE variant
-        # and supplies SOFTFLOAT_FAST_INT64/platform.h (do not compile all
-        # architecture specializations together).
-        if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR EMSCRIPTEN)
-            message(FATAL_ERROR "Full upstream runtime probe currently targets native Linux")
-        endif()
-        find_program(BOXEDWINE_MAKE NAMES make gmake REQUIRED)
-        set(BOXEDWINE_SOFTFLOAT_DIR
-            "${CMAKE_CURRENT_SOURCE_DIR}/lib/softfloat/build/Linux-x86_64-GCC")
-        set(BOXEDWINE_SOFTFLOAT_ARCHIVE
-            "${BOXEDWINE_SOFTFLOAT_DIR}/softfloat.a")
-        add_custom_command(
-            OUTPUT "${BOXEDWINE_SOFTFLOAT_ARCHIVE}"
-            COMMAND "${BOXEDWINE_MAKE}" -j2
-            WORKING_DIRECTORY "${BOXEDWINE_SOFTFLOAT_DIR}"
-            COMMENT "Building original upstream x86 SoftFloat"
-            VERBATIM)
-        add_custom_target(emuwasm_softfloat_build
-            DEPENDS "${BOXEDWINE_SOFTFLOAT_ARCHIVE}")
-        add_library(emuwasm_softfloat STATIC IMPORTED GLOBAL)
-        set_target_properties(emuwasm_softfloat PROPERTIES
-            IMPORTED_LOCATION "${BOXEDWINE_SOFTFLOAT_ARCHIVE}")
-        add_dependencies(emuwasm_softfloat emuwasm_softfloat_build)
+        # The BoxedWine SoftFloat fork contains a reduced selection of C
+        # files, while its inherited Makefile names missing upstream objects.
+        # Compile the files that ACTUALLY exist, selecting ONLY 8086-SSE.
+        set(BOXEDWINE_SOFTFLOAT_ROOT
+            "${CMAKE_CURRENT_SOURCE_DIR}/lib/softfloat")
+        file(GLOB BOXEDWINE_SOFTFLOAT_CORE CONFIGURE_DEPENDS
+            "${BOXEDWINE_SOFTFLOAT_ROOT}/source/*.c")
+        file(GLOB BOXEDWINE_SOFTFLOAT_X86 CONFIGURE_DEPENDS
+            "${BOXEDWINE_SOFTFLOAT_ROOT}/source/8086-SSE/*.c")
+        add_library(emuwasm_softfloat STATIC
+            ${BOXEDWINE_SOFTFLOAT_CORE} ${BOXEDWINE_SOFTFLOAT_X86})
+        target_include_directories(emuwasm_softfloat PRIVATE
+            "${BOXEDWINE_SOFTFLOAT_ROOT}/source/include"
+            "${BOXEDWINE_SOFTFLOAT_ROOT}/source/8086-SSE"
+            "${BOXEDWINE_SOFTFLOAT_ROOT}/build/Linux-x86_64-GCC")
+        target_compile_definitions(emuwasm_softfloat PRIVATE
+            SOFTFLOAT_FAST_INT64 SOFTFLOAT_ROUND_ODD INLINE_LEVEL=5
+            SOFTFLOAT_FAST_DIV32TO16 SOFTFLOAT_FAST_DIV64TO32)
 
         # Native Linux platform and SDL host services from upstream sources.
         # These retain the original relative include paths under platform/.
