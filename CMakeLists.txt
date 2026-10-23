@@ -54,7 +54,9 @@ if(EMUWASM_BUILD_EXTRACTED)
         # (BString, synchronization, logging, file helpers). No replacements.
         file(GLOB BOXEDWINE_UTIL_SOURCES CONFIGURE_DEPENDS
             "${CMAKE_CURRENT_SOURCE_DIR}/engine/util/*.cpp")
+        find_package(CURL REQUIRED)
         add_library(emuwasm_boxedwine_util STATIC ${BOXEDWINE_UTIL_SOURCES})
+        target_link_libraries(emuwasm_boxedwine_util PUBLIC CURL::libcurl)
         target_compile_features(emuwasm_boxedwine_util PRIVATE cxx_std_20)
         target_include_directories(emuwasm_boxedwine_util PRIVATE
             $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
