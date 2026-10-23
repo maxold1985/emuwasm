@@ -33,6 +33,13 @@ if(EMUWASM_BUILD_EXTRACTED)
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/emulation/softmmu"
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/kernel"
         "${CMAKE_CURRENT_SOURCE_DIR}/third_party/boxedwine_include")
+    # Compile the real upstream CPU API contract as a separate object.
+    # An object target avoids falsely claiming a runnable interpreter before
+    # KMemory, KThread and their runtime dependencies are linked.
+    add_library(emuwasm_cpu_api_check OBJECT tests/boxedwine_cpu_api.cpp)
+    target_compile_features(emuwasm_cpu_api_check PRIVATE cxx_std_20)
+    target_include_directories(emuwasm_cpu_api_check PRIVATE
+        $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
     message(WARNING "Extracted BoxedWine build is experimental; upstream dependencies may be missing")
 endif()
 
