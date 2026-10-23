@@ -70,25 +70,7 @@ jobs:
           if-no-files-found: ignore
       - name: Run x86 instructions if link succeeded
         if: steps.x86_link.outcome == 'success'
-        run: ctest --test-dir build-x86 -R '^boxedwine_x86_execution
-        shell: bash
-        run: |
-          set -euo pipefail
-          LIB=build-cpu/libemuwasm_boxedwine.a
-          test -s "$LIB"
-          nm -C --defined-only "$LIB" > cpu-symbols.txt
-          # Verify the archive contains compiled BoxedWine CPU and instruction implementations.
-          grep -E 'CPU::|NormalCPU::|normalCPU|common_' cpu-symbols.txt > cpu-matching-symbols.txt
-          test -s cpu-matching-symbols.txt
-          echo "Compiled BoxedWine CPU symbols: $(wc -l < cpu-matching-symbols.txt)"
-      - name: Upload compiled CPU symbol inventory
-        uses: actions/upload-artifact@v4
-        with:
-          name: boxedwine-cpu-symbols
-          path: |
-            cpu-symbols.txt
-            cpu-matching-symbols.txt
- --output-on-failure
+        run: ctest --test-dir build-x86 -R '^boxedwine_x86_execution$' --output-on-failure
       - name: Report x86 link status
         if: always()
         shell: bash
