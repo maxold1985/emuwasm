@@ -46,6 +46,10 @@ jobs:
         run: cmake -S . -B build-cpu -DEMUWASM_BUILD_EXTRACTED=ON -DCMAKE_BUILD_TYPE=Release
       - name: Compile original CPU (dependency discovery)
         run: cmake --build build-cpu --parallel 2
+      - name: Configure original kernel dependency audit
+        run: cmake -S . -B build-kernel -DEMUWASM_BUILD_EXTRACTED=ON -DEMUWASM_BUILD_KERNEL_OBJECTS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Compile original kernel objects
+        run: cmake --build build-kernel --target emuwasm_boxedwine_kernel --parallel 2
       - name: Verify original CPU execution symbols
         shell: bash
         run: |
