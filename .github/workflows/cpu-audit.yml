@@ -1,0 +1,40 @@
+name: CPU source audit
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/cpu-audit.yml'
+      - 'CMakeLists.txt'
+
+jobs:
+  boxedwine-cpu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout EmuWasm
+        uses: actions/checkout@v4
+      - name: Checkout original BoxedWine sources
+        uses: actions/checkout@v4
+        with:
+          repository: danoon2/Boxedwine
+          ref: master
+          path: boxedwine-upstream
+      - name: Import original CPU and MMU sources
+        shell: bash
+        run: |
+          mkdir -p engine/emulation
+          cp -a boxedwine-upstream/source/emulation/cpu engine/emulation/
+          cp -a boxedwine-upstream/source/emulation/softmmu engine/emulation/
+          cp -a boxedwine-upstream/source/kernel engine/
+          cp -a boxedwine-upstream/source/util engine/
+          cp -a boxedwine-upstream/source/io engine/
+          find engine/emulation/cpu engine/emulation/softmmu -type f \( -name '*.cpp' -o -name '*.h' \) | sort > cpu-files.txt
+          echo "Original CPU/MMU files: $(wc -l < cpu-files.txt)"
+      - name: Upload original source manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: boxedwine-cpu-file-manifest
+          path: cpu-files.txt
+      - name: Configure CPU build (experimental)
+        run: cmake -S . -B build-cpu -DEMUWASM_BUILD_EXTRACTED=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Compile original CPU (dependency discovery)
+        run: cmake --build build-cpu --parallel 2
