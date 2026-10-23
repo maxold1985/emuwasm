@@ -52,6 +52,52 @@ jobs:
         run: cmake -S . -B build-kernel -DEMUWASM_BUILD_EXTRACTED=ON -DEMUWASM_BUILD_KERNEL_OBJECTS=ON -DCMAKE_BUILD_TYPE=Release
       - name: Compile original kernel objects
         run: cmake --build build-kernel --target emuwasm_boxedwine_kernel --parallel 2
+      - name: Configure x86 execution link probe
+        run: cmake -S . -B build-x86 -DEMUWASM_BUILD_EXTRACTED=ON -DEMUWASM_BUILD_KERNEL_OBJECTS=ON -DEMUWASM_BUILD_X86_TEST=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Probe linking genuine x86 execution test
+        id: x86_link
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build-x86 --target emuwasm_x86_execution --parallel 2 2>&1 | tee x86-link.log
+        continue-on-error: true
+      - name: Upload x86 execution link diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boxedwine-x86-link-diagnostics
+          path: x86-link.log
+          if-no-files-found: ignore
+      - name: Run x86 instructions if link succeeded
+        if: steps.x86_link.outcome == 'success'
+        run: ctest --test-dir build-x86 -R '^boxedwine_x86_execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIB=build-cpu/libemuwasm_boxedwine.a
+          test -s "$LIB"
+          nm -C --defined-only "$LIB" > cpu-symbols.txt
+          # Verify the archive contains compiled BoxedWine CPU and instruction implementations.
+          grep -E 'CPU::|NormalCPU::|normalCPU|common_' cpu-symbols.txt > cpu-matching-symbols.txt
+          test -s cpu-matching-symbols.txt
+          echo "Compiled BoxedWine CPU symbols: $(wc -l < cpu-matching-symbols.txt)"
+      - name: Upload compiled CPU symbol inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: boxedwine-cpu-symbols
+          path: |
+            cpu-symbols.txt
+            cpu-matching-symbols.txt
+ --output-on-failure
+      - name: Report x86 link status
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${{ steps.x86_link.outcome }}" != "success" ]]; then
+            echo "x86 interpreter executable NOT linked; inspect boxedwine-x86-link-diagnostics" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "x86 interpreter executable linked; see CTest result above" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Verify original CPU execution symbols
         shell: bash
         run: |
