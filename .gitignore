@@ -1,0 +1,11 @@
+build/
+build-*/
+.vs/
+*.obj
+*.o
+*.a
+*.lib
+*.wasm
+*.js
+*.html
+third_party/
