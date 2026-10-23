@@ -15,6 +15,7 @@ target_include_directories(emuwasm_probe PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/inc
 if(EMUWASM_BUILD_EXTRACTED)
     file(GLOB_RECURSE BOXEDWINE_CPU CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/emulation/cpu/common/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/engine/emulation/cpu/decoder.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/emulation/cpu/normal/*.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/emulation/softmmu/*.cpp")
     if(NOT BOXEDWINE_CPU)
@@ -62,8 +63,10 @@ if(EMUWASM_BUILD_EXTRACTED)
             "${CMAKE_CURRENT_SOURCE_DIR}/engine/io/*.cpp")
         file(GLOB BOXEDWINE_PROC_SOURCES CONFIGURE_DEPENDS
             "${CMAKE_CURRENT_SOURCE_DIR}/engine/kernel/proc/*.cpp")
+        file(GLOB BOXEDWINE_LOADER_SOURCES CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/engine/kernel/loader/*.cpp")
         add_library(emuwasm_boxedwine_io STATIC
-            ${BOXEDWINE_IO_SOURCES} ${BOXEDWINE_PROC_SOURCES})
+            ${BOXEDWINE_IO_SOURCES} ${BOXEDWINE_PROC_SOURCES} ${BOXEDWINE_LOADER_SOURCES})
         target_compile_features(emuwasm_boxedwine_io PRIVATE cxx_std_20)
         target_include_directories(emuwasm_boxedwine_io PRIVATE
             $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
