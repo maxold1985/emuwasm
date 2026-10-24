@@ -1,0 +1,82 @@
+name: Prism3D Windows memory probe package (reuses verified native build)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/prism3d-memory-probe.yml'
+      - 'scripts/run_boxedwine_game_windows.ps1'
+      - 'scripts/run_prism3d_memory.bat'
+      - 'scripts/run_prism3d_winxp.bat'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  package-memory-probe:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      # The upstream master source was compiled successfully on Windows x64
+      # by our boxedwine-windows.yml workflow (run 40073360556).
+      # Reusing a compiled binary saves a long MSBuild run for launcher-only
+      # changes. The result is still an original unmodified BoxedWine binary.
+      - name: Reuse successful full BoxedWine master Windows x64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: boxedwine-full-runtime-windows-x64
+          run-id: 40073360556
+          repository: maxold1985/emuwasm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: memory-probe-package
+
+      - name: Verify native x64 executable and package the new memory launcher
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = 'memory-probe-package/Boxedwine.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Expected source-built native Boxedwine.exe artifact' }
+          $bytes = [IO.File]::ReadAllBytes((Resolve-Path $exe))
+          if ($bytes.Length -lt 1024 -or [BitConverter]::ToUInt16($bytes, 0) -ne 0x5a4d) { throw 'Invalid Windows MZ executable' }
+          $offset = [BitConverter]::ToInt32($bytes, 0x3c)
+          if ($offset -lt 0 -or $offset + 6 -gt $bytes.Length -or [BitConverter]::ToUInt32($bytes, $offset) -ne 0x4550) { throw 'Invalid PE header' }
+          if ([BitConverter]::ToUInt16($bytes, $offset+4) -ne 0x8664) { throw 'Native executable is not AMD64' }
+          Copy-Item scripts/run_boxedwine_game_windows.ps1 memory-probe-package/run_prism3d.ps1 -Force
+          Copy-Item scripts/run_prism3d_memory.bat memory-probe-package/run_prism3d_memory.bat -Force
+          Copy-Item scripts/run_prism3d_winxp.bat memory-probe-package/run_prism3d_winxp.bat -Force
+          Copy-Item scripts/run_prism3d_windows.bat memory-probe-package/run_prism3d.bat -Force
+          @'
+          PRISM3D BOXEDWINE WINDOWS MEMORY TEST
+          Full BoxedWine master Windows x64 runtime originally compiled in:
+          https://github.com/maxold1985/emuwasm/actions/runs/40073360556
+
+          1. Extract this ZIP, keeping Boxedwine.exe and all DLL files together.
+          2. Keep your already downloaded TinyCore15Wine11.0.zip Wine filesystem.
+          3. Double-click run_prism3d_memory.bat.
+             It configures Windows XP for the Wine guest and tries
+             -disableLinearMemory to disable the new 4 GiB host linear
+             memory aperture, using the legacy guarded MMU path.
+          4. Compare with run_prism3d_winxp.bat (standard emulator MMU).
+          5. Logs: %LOCALAPPDATA%\EmuWasm\Logs
+             Send launcher-*.log and prism3d-*.log for further diagnosis.
+
+          This is an EXPERIMENTAL workaround. It has not been verified
+          with the actual 18 Wheels of Steel: Pedal to the Metal executable.
+          The BoxedWine 26R1 binary does not support -disableLinearMemory.
+          The 150 MiB game allocation may still fail under the new runtime.
+          No commercial game data is included in this ZIP.
+          '@ | Set-Content memory-probe-package/README-MEMORY-TEST.txt -Encoding UTF8
+          Get-ChildItem memory-probe-package -File | Select-Object Name,Length
+          Write-Host 'Source-built BoxedWine native x64 verified and diagnostic scripts updated.'
+
+      - name: Publish runnable Windows memory-test ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: prism3d-boxedwine-master-windows-x64-memory-test
+          path: memory-probe-package/
+          if-no-files-found: error
