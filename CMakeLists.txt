@@ -13,12 +13,16 @@ add_library(emuwasm_probe STATIC src/probe.cpp)
 target_include_directories(emuwasm_probe PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 # Portable PE32 parser/relocator: does not depend on BoxedWine or Wine.
-add_library(emuwasm_pe32 STATIC src/pe32.cpp src/pe32_modules.cpp)
+add_library(emuwasm_pe32 STATIC src/pe32.cpp src/pe32_modules.cpp src/pe32_wine.cpp)
 target_include_directories(emuwasm_pe32 PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 # Inspect real on-disk PE32 images without executing guest code.
 add_executable(emuwasm_pe32_inspect tools/pe32_inspect.cpp)
 target_link_libraries(emuwasm_pe32_inspect PRIVATE emuwasm_pe32)
+
+# Read Wine's genuine i386-windows PE DLLs from disk and bind guest IATs.
+add_executable(emuwasm_wine_link tools/wine_link.cpp)
+target_link_libraries(emuwasm_wine_link PRIVATE emuwasm_pe32)
 
 if(EMUWASM_BUILD_EXTRACTED)
     file(GLOB_RECURSE BOXEDWINE_CPU CONFIGURE_DEPENDS
@@ -212,4 +216,7 @@ if(NOT EMSCRIPTEN)
     add_executable(emuwasm_pe32_modules_test tests/pe32_modules.cpp)
     target_link_libraries(emuwasm_pe32_modules_test PRIVATE emuwasm_pe32)
     add_test(NAME pe32_modules COMMAND emuwasm_pe32_modules_test)
+    add_executable(emuwasm_pe32_wine_test tests/pe32_wine.cpp)
+    target_link_libraries(emuwasm_pe32_wine_test PRIVATE emuwasm_pe32)
+    add_test(NAME pe32_wine COMMAND emuwasm_pe32_wine_test)
 endif()
