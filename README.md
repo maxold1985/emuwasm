@@ -95,6 +95,32 @@ exception handling and proper Win32 process startup. Real Wine binaries
 have **not yet been validated in CI**; current tests use deterministic
 on-disk PE32 DLL fixtures. Unsupported PE features fail explicitly.
 
+## Prism3D: encerramento na reserva de 150 MiB (BoxedWine Windows)
+
+Um log do 18 Wheels of Steel mostrou que o processo inicia sob Wine 11 como
+Windows XP SP3, detecta DirectX 8.1, carrega as DLLs do jogo e chama
+`NtAllocateVirtualMemory` com `RegionSize=0x09600000` (150 MiB). O ultimo
+registro era `map_view got mem` seguido de `mprotect_exec forcing exec
+permission` no intervalo `0x12e00000-0x1c3fffff`. Isso **nao comprova**
+falha de alocacao; o log termina antes do retorno da API.
+
+O build original BoxedWine 26R1 nao aceita `-disableLinearMemory`. Para
+testar a implementacao atualizada, baixe o artifact
+`boxedwine-full-runtime-windows-x64` do
+[workflow de compilacao Windows do codigo master](.github/workflows/boxedwine-windows.yml)
+e abra `run_prism3d_memory.bat`. Ele executa o Wine em modo XP com
+`-disableLinearMemory` (MMU legada) e `WINEDEBUG=+seh,+loaddll`.
+
+Use `run_prism3d_winxp.bat` para comparar a memoria padrao do mesmo
+build; adicione `-NoSound` para testar o audio, ou
+`-TraceVirtualMemory` para registro extremamente detalhado.
+Logs disponiveis em `%LOCALAPPDATA%\EmuWasm\Logs`:
+`launcher-*.log`, `prism3d-*.log`, `wine-set-winxp.log`.
+
+Este teste de MMU e **experimental**, nao uma correcao confirmada:
+o jogo real nao e testado na CI. A versao 26R1 tem um lancador
+sem suporte a `-disableLinearMemory`.
+
 ## Windows 10 x64: executable nativo (sem WSL)
 
 O executavel `boxedwine` publicado pelo workflow Linux **nao roda no Windows**.
