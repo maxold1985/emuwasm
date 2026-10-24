@@ -78,6 +78,33 @@ int main() {
     check(!wine.loadDll("../kernel32.dll", error),
           "reject path traversal in DLL name");
 
+    // A DLL may import another DLL. The loader must patch BOTH the EXE's
+    // IAT and the imported DLL's IAT before the guest CPU runs.
+    save(root / "KERNEL32.DLL", emuwasm::test::makePe32DllWithImports());
+    WineDllLoader recursive;
+    recursive.addSearchDirectory(root);
+    Image recursiveExe;
+    check(recursive.loadExecutable(root / "app.exe", recursiveExe, error) &&
+          recursive.linkExecutable(recursiveExe, error),
+          "load DLL-to-DLL imports recursively");
+    const Image* recursiveKernel = recursive.modules().findDll("kernel32");
+    const Image* recursiveNtdll = recursive.modules().findDll("ntdll");
+    check(recursiveKernel && recursiveNtdll &&
+          recursiveKernel->imports.size() == 1,
+          "kernel32 guest DLL imports ntdll");
+    if (recursiveKernel && recursiveNtdll) {
+        check(read32(recursiveExe.bytes, 0x2050) ==
+                  recursiveKernel->loadBase + 0x1000,
+              "EXE IAT bound to kernel32 code");
+        check(read32(recursiveKernel->bytes, 0x3050) ==
+                  recursiveNtdll->loadBase + 0x1000,
+              "kernel32 IAT bound to ntdll code");
+        check(read32(recursiveKernel->bytes, 0x1002) ==
+                  recursiveKernel->loadBase + 0x3050,
+              "kernel32 absolute CALL operand relocated");
+    }
+
+
     WineDllLoader missing;
     missing.addSearchDirectory(root);
     check(!missing.loadDll("user32.dll", error) &&
