@@ -8,6 +8,11 @@ param(
     [string]$BoxedWineExecutable = "",
     [ValidatePattern('^\d{3,4}x\d{3,4}$')]
     [string]$Resolution = "1024x768",
+    [string]$LogDirectory = "",
+    [switch]$WinXP,
+    [switch]$DebugWine,
+    [switch]$NoSound,
+    [switch]$Pentium3,
     [switch]$DryRun
 )
 
@@ -82,23 +87,85 @@ if (-not $DryRun) {
 $guestExe = 'D:\' + $Exe.Replace('/', '\')
 $relativeDirectory = [IO.Path]::GetDirectoryName($Exe.Replace('/', '\'))
 $guestWorkingDir = if ($relativeDirectory) { '/mnt/drive_d/' + $relativeDirectory.Replace('\', '/') } else { '/mnt/drive_d' }
-$arguments = @(
+# Enable per-run diagnostics without deleting existing game saves or Wine config.
+# -log is supported by the actual 26R1 Windows binary. Wine debug channels
+# are guest environment variables, NOT Windows host environment variables.
+if (-not $LogDirectory) {
+    $LogDirectory = Join-Path $env:LOCALAPPDATA 'EmuWasm\Logs'
+}
+$LogDirectory = [IO.Path]::GetFullPath($LogDirectory)
+if (-not $DryRun) {
+    New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
+}
+$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+$runLog = Join-Path $LogDirectory ("prism3d-{0}.log" -f $timestamp)
+
+$commonArguments = @(
     '-root', [IO.Path]::GetFullPath($ProfileDirectory),
     '-zip', $wineZipPath,
     '-mount_drive', $gameRoot, 'd',
     '-w', $guestWorkingDir,
-    '-resolution', $Resolution,
-    '/bin/wine', $guestExe
+    '-resolution', $Resolution
 )
-Write-Host 'BoxedWine x64: iniciando Prism3D com Wine completo / SDL / OpenGL.'
+if ($DebugWine) {
+    $commonArguments += @('-env', 'WINEDEBUG=+seh,+loaddll,+virtual')
+}
+if ($NoSound) {
+    $commonArguments += '-nosound'
+}
+if ($Pentium3) {
+    $commonArguments += '-p3'
+}
+
+# Wine 11 normally reports a newer Windows version, whereas this 2004 game
+# originally targeted Windows XP. Set the actual Wine registry value rather
+# than pretending to change the host Windows version. This changes ONLY
+# the dedicated BoxedWine guest profile, not the host registry.
+$winXPArguments = @(
+    $commonArguments + @(
+        '-log', (Join-Path $LogDirectory 'wine-set-winxp.log'),
+        '/bin/wine', 'reg', 'add', 'HKCU\Software\Wine',
+        '/v', 'Version', '/t', 'REG_SZ', '/d', 'winxp', '/f'
+    )
+)
+$arguments = @(
+    $commonArguments + @(
+        '-log', $runLog,
+        '/bin/wine', $guestExe
+    )
+)
+
+Write-Host 'BoxedWine x64: iniciando Prism3D com Wine completo / SDL / OpenGL.' -ForegroundColor Cyan
 Write-Host "Executavel: $fullExe"
 Write-Host "Wine root: $wineZipPath"
+Write-Host "Diretorio convidado: $guestWorkingDir"
+Write-Host "Log: $runLog"
+if (-not (Test-Path -LiteralPath (Join-Path $gameRoot 'base.scs') -PathType Leaf)) {
+    Write-Warning 'base.scs nao encontrado na raiz do jogo. Confira se toda a instalacao esta presente.'
+}
+if (-not (Test-Path -LiteralPath (Join-Path $gameRoot 'data.scs') -PathType Leaf)) {
+    Write-Warning 'data.scs nao encontrado na raiz do jogo. Confira os arquivos de dados.'
+}
+if ($WinXP) {
+    Write-Host 'Compatibilidade: configurando Windows XP no registro do Wine convidado.'
+    Write-Host ('Comando WinXP: "{0}" {1}' -f $BoxedWineExecutable, ($winXPArguments -join ' '))
+}
 Write-Host ('Comando: "{0}" {1}' -f $BoxedWineExecutable, ($arguments -join ' '))
 if ($DryRun) { exit 0 }
 
-# This is the original upstream Wine runtime; game compatibility is unverified.
-& $BoxedWineExecutable @arguments
-if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-    Write-Warning "BoxedWine finalizou com codigo $LASTEXITCODE"
-    exit $LASTEXITCODE
+if ($WinXP) {
+    & $BoxedWineExecutable @winXPArguments
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Falha ao configurar Windows XP. Consulte $(Join-Path $LogDirectory 'wine-set-winxp.log')"
+        exit $LASTEXITCODE
+    }
 }
+# Launch the actual upstream Wine runtime. Game compatibility is unverified.
+& $BoxedWineExecutable @arguments
+$gameExitCode = $LASTEXITCODE
+if ($null -ne $gameExitCode -and $gameExitCode -ne 0) {
+    Write-Warning "Prism3D/BoxedWine finalizou com codigo $gameExitCode"
+    if (Test-Path -LiteralPath $runLog -PathType Leaf) {
+        Write-Host "Ultimas 50 linhas do log $runLog" -ForegroundColor Yellow
+        Get-Content -LiteralPath $runLog -Tail 50 | ForEach-Object { Write-Host $_ }
+        $errors = @(Select-String -LiteralPath $runLog -Pattern 
