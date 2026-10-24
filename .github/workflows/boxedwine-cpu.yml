@@ -20,6 +20,10 @@ jobs:
           cp -a boxedwine-upstream/source/kernel engine/
           cp -a boxedwine-upstream/source/util engine/
           cp -a boxedwine-upstream/source/io engine/
+          # Original soft-MMU headers use ../../source/util/... relative to engine/emulation.
+          # Keep the original source/ hierarchy alongside the staged engine/ tree.
+          ln -s ../boxedwine-upstream/source source
+          test -f source/util/bnativeheap.h
           echo "Original BoxedWine source trees staged under engine/"
       - name: Stage upstream SoftFloat C sources
         shell: bash
