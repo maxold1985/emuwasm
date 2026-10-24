@@ -1,0 +1,100 @@
+name: 18 Wheels of Steel browser port (WASM WebGL)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/18wos-browser-port.yml'
+      - 'browser_port/**'
+      - 'scripts/package_boxedwine_game.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  browser-port-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Python and JavaScript syntax
+        run: |
+          python3 -m py_compile browser_port/server.py browser_port/test_server.py scripts/package_boxedwine_game.py
+          node --check browser_port/port.js
+      - name: Verify browser upload security and local WASM service
+        run: |
+          python3 -m unittest discover -s browser_port -p 'test_*.py' -v
+          python3 -m unittest discover -s tests -p 'test_boxedwine_game_tools.py' -v
+
+  package-browser:
+    needs: browser-port-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: emuwasm
+      - name: Reuse already compiled full BoxedWine WebAssembly/WebGL runtime
+        uses: actions/download-artifact@v4
+        with:
+          repository: maxold1985/emuwasm
+          run-id: 40069975684
+          name: emuwasm-boxedwine-full-webgl
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: browser-build
+      - name: Integrate game launcher and verified Python localhost server
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s browser-build/boxedwine.html
+          test -s browser-build/boxedwine.js
+          test -s browser-build/boxedwine.wasm
+          cp emuwasm/browser_port/index.html browser-build/index.html
+          cp emuwasm/browser_port/port.css browser-build/port.css
+          cp emuwasm/browser_port/port.js browser-build/port.js
+          cp emuwasm/browser_port/server.py browser-build/server.py
+          cp emuwasm/scripts/package_boxedwine_game.py browser-build/package_boxedwine_game.py
+          cat > browser-build/start_windows.bat <<'BAT'
+          @echo off
+          cd /d "%~dp0"
+          echo EmuWasm - 18 Wheels of Steel / Prism3D no navegador
+          echo.
+          py -3 server.py --port 8000
+          if errorlevel 1 (
+              echo.
+              echo ERRO: Python 3 nao encontrado ou porta 8000 indisponivel.
+          )
+          pause
+          BAT
+          cat > browser-build/README-PORT-BROWSER.txt <<'TXT'
+          18 WHEELS OF STEEL: PEDAL TO THE METAL - BROWSER EXPERIMENT
+          BoxedWine full x86 + Wine for WebAssembly, graphics via WebGL.
+
+          WINDOWS 10:
+          1. Extract ALL files in this ZIP.
+          2. Double-click start_windows.bat (Python 3 required).
+          3. Open http://127.0.0.1:8000/ in Chrome or Edge.
+          4. Import your compatible Wine filesystem ZIP using the web page.
+             Example: TinyCore15Wine11.0.zip from the original BoxedWine UI.
+          5. First create ZIP of YOUR OWN installed game:
+             py -3 package_boxedwine_game.py --game-dir "C:\GOG Games\18 Wheels of Steel Pedal to the Metal" --exe prism3d.exe --output prism3d.zip
+          6. Import prism3d.zip using the browser page.
+          7. Select OpenGL/WebGL, then click Start.
+
+          Files stay local under .local-game-data and are only served from 127.0.0.1.
+          Do not host this folder on the internet or publish copyrighted game ZIPs.
+          Wine filesystem and game data are NOT bundled here.
+          BoxedWine WASM is the existing upstream runtime, not a native game source port.
+          Real-game execution and 3D rendering are NOT yet verified.
+          The Windows log "Vulkan not compiled into Boxedwine" does not establish
+          that this WebGL build can render the game's DirectDraw/Direct3D calls.
+          TXT
+          test -s browser-build/server.py
+          python3 -m py_compile browser-build/server.py
+          ls -lah browser-build | head -40
+      - name: Publish local browser port + WebAssembly runtime (no game content)
+        uses: actions/upload-artifact@v4
+        with:
+          name: emuwasm-18wos-browser-webgl-wasm
+          path: browser-build/
+          if-no-files-found: error
