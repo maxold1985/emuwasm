@@ -14,13 +14,18 @@ int main(int argc, char** argv) {
     namespace fs = std::filesystem;
     std::vector<fs::path> directories;
     fs::path executable;
+    bool includeGameDirectory = true;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
-        if (arg == "--wine-dir" && i + 1 < argc) {
+        if (arg == "--no-game-dir") {
+            includeGameDirectory = false;
+        } else if (arg == "--game-dir" && i + 1 < argc) {
+            directories.emplace_back(argv[++i]);
+        } else if (arg == "--wine-dir" && i + 1 < argc) {
             directories.emplace_back(argv[++i]);
         } else if (arg == "--help" || arg == "-h") {
             std::printf("Usage: emuwasm_wine_link [--wine-dir PATH] "
-                        "[--wine-dir PATH2] file.exe\n");
+                        "[--game-dir PATH] [--no-game-dir] [--wine-dir PATH2] file.exe\n");
             return 0;
         } else if (!arg.empty() && arg[0] != '-' && executable.empty()) {
             executable = fs::path(arg);
@@ -29,7 +34,13 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
-    if (directories.empty()) {
+    // Windows searches the application directory before system locations.
+    // Preserve that priority for game-specific DLLs such as p3shared.dll.
+    if (!executable.empty() && includeGameDirectory)
+        directories.insert(directories.begin(), fs::absolute(executable).parent_path());
+
+    // Always add the bundled Wine fallback after explicit directories.
+    {
         // Look for the Wine PE32 DLLs bundled alongside the WASM launcher.
         // A user-supplied --wine-dir always takes precedence.
         const fs::path bundled = fs::current_path() / "wine" / "i386-windows";
@@ -38,7 +49,7 @@ int main(int argc, char** argv) {
     }
     if (executable.empty() || directories.empty()) {
         std::fprintf(stderr,
-            "Usage: emuwasm_wine_link [--wine-dir PATH] file.exe\\n"
+            "Usage: emuwasm_wine_link [--game-dir PATH] [--wine-dir PATH] file.exe\\n"
             "Run from the app folder containing wine/i386-windows, "
             "or specify --wine-dir.\\n");
         return 2;
