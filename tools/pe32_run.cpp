@@ -144,7 +144,6 @@ int main(int argc, char** argv) {
     // Ensure process metadata and stack do not overlap the EXE or DLLs.
     // The games may have different PE PreferredImageBases.
     constexpr U32 stackSize = 0x400000;  // 4 MiB.
-    constexpr U32 envSize = 0x10000;
     U32 stackBase = 0;
     emuwasm::pe32::Win32Environment environment;
     for (std::uint64_t candidate = 0x20000000ULL;
