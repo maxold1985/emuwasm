@@ -239,7 +239,21 @@ if(EMUWASM_BUILD_EXTRACTED)
             emuwasm_boxedwine_util emuwasm_boxedwine_io
             emuwasm_boxedwine_platform emuwasm_boxedwine_display emuwasm_softfloat
             "-Wl,--end-group")
+        # Diagnostic launcher that executes actual PE32 guest instructions.
+        # Native/WSL only: the Wine Unix ABI and display backend are not wired.
+        add_executable(emuwasm_pe32_run tools/pe32_run.cpp)
+        target_compile_features(emuwasm_pe32_run PRIVATE cxx_std_20)
+        target_include_directories(emuwasm_pe32_run PRIVATE
+            $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
+        target_link_libraries(emuwasm_pe32_run PRIVATE
+            emuwasm_pe32_boxedwine emuwasm_pe32
+            "-Wl,--start-group"
+            emuwasm_boxedwine emuwasm_boxedwine_kernel
+            emuwasm_boxedwine_util emuwasm_boxedwine_io
+            emuwasm_boxedwine_platform emuwasm_boxedwine_display emuwasm_softfloat
+            "-Wl,--end-group")
         if(NOT EMSCRIPTEN)
+            add_test(NAME pe32_run_help COMMAND emuwasm_pe32_run --help)
             add_test(NAME boxedwine_win32_fs_execution COMMAND emuwasm_win32_fs_execution)
             add_test(NAME boxedwine_x86_execution COMMAND emuwasm_x86_execution)
             add_test(NAME boxedwine_pe32_execution COMMAND emuwasm_pe32_execution)
