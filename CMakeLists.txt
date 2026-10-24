@@ -13,7 +13,7 @@ add_library(emuwasm_probe STATIC src/probe.cpp)
 target_include_directories(emuwasm_probe PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 # Portable PE32 parser/relocator: does not depend on BoxedWine or Wine.
-add_library(emuwasm_pe32 STATIC src/pe32.cpp src/pe32_modules.cpp src/pe32_wine.cpp)
+add_library(emuwasm_pe32 STATIC src/pe32.cpp src/pe32_modules.cpp src/pe32_wine.cpp src/pe32_process.cpp)
 target_include_directories(emuwasm_pe32 PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 # Inspect real on-disk PE32 images without executing guest code.
@@ -207,7 +207,21 @@ if(EMUWASM_BUILD_EXTRACTED)
             emuwasm_boxedwine_util emuwasm_boxedwine_io
             emuwasm_boxedwine_platform emuwasm_boxedwine_display emuwasm_softfloat
             "-Wl,--end-group")
+        # Original x86 CPU reads FS:[0x30] to traverse Wine-style TEB, PEB,
+        # module lists and thread-local process metadata.
+        add_executable(emuwasm_win32_fs_execution tests/boxedwine_win32_fs_execution.cpp)
+        target_compile_features(emuwasm_win32_fs_execution PRIVATE cxx_std_20)
+        target_include_directories(emuwasm_win32_fs_execution PRIVATE
+            $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
+        target_link_libraries(emuwasm_win32_fs_execution PRIVATE
+            emuwasm_pe32_boxedwine emuwasm_pe32
+            "-Wl,--start-group"
+            emuwasm_boxedwine emuwasm_boxedwine_kernel
+            emuwasm_boxedwine_util emuwasm_boxedwine_io
+            emuwasm_boxedwine_platform emuwasm_boxedwine_display emuwasm_softfloat
+            "-Wl,--end-group")
         if(NOT EMSCRIPTEN)
+            add_test(NAME boxedwine_win32_fs_execution COMMAND emuwasm_win32_fs_execution)
             add_test(NAME boxedwine_x86_execution COMMAND emuwasm_x86_execution)
             add_test(NAME boxedwine_pe32_execution COMMAND emuwasm_pe32_execution)
             add_test(NAME boxedwine_pe32_import_execution COMMAND emuwasm_pe32_import_execution)
@@ -239,4 +253,7 @@ if(NOT EMSCRIPTEN)
     add_executable(emuwasm_pe32_wine_test tests/pe32_wine.cpp)
     target_link_libraries(emuwasm_pe32_wine_test PRIVATE emuwasm_pe32)
     add_test(NAME pe32_wine COMMAND emuwasm_pe32_wine_test)
+    add_executable(emuwasm_pe32_process_test tests/pe32_process.cpp)
+    target_link_libraries(emuwasm_pe32_process_test PRIVATE emuwasm_pe32)
+    add_test(NAME pe32_process COMMAND emuwasm_pe32_process_test)
 endif()
