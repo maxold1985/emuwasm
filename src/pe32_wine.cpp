@@ -198,8 +198,8 @@ bool WineDllLoader::loadDllRecursive(const std::string& filename,
         error = "internal error registering DLL: " + key;
         return false;
     }
-    nextBase_ = std::max(nextBase_, (base + loaded->bytes.size() + 0xffffULL) &
-                                    ~0xffffULL);
+    nextBase_ = std::max<std::uint64_t>(
+        nextBase_, (base + loaded->bytes.size() + 0xffffULL) & ~0xffffULL);
 
     // Copy dependency names: registering another module may reallocate
     // the registry and invalidate pointers to this Image.
