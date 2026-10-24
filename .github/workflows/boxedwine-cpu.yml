@@ -12,7 +12,7 @@ jobs:
           submodules: recursive
       - name: Fetch original BoxedWine sources
         run: |
-          git clone --depth 1 https://github.com/danoon2/Boxedwine.git boxedwine-upstream
+          git clone --depth 1 --recurse-submodules https://github.com/danoon2/Boxedwine.git boxedwine-upstream
           test -d boxedwine-upstream/source/emulation/cpu
           test -d boxedwine-upstream/source/emulation/softmmu
           mkdir -p engine
@@ -21,6 +21,30 @@ jobs:
           cp -a boxedwine-upstream/source/util engine/
           cp -a boxedwine-upstream/source/io engine/
           echo "Original BoxedWine source trees staged under engine/"
+      - name: Stage upstream SoftFloat C sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The CPU integration CMake target expects SoftFloat's source tree
+          # at lib/softfloat/source and its 8086-SSE specialization.
+          source_dir=""
+          while IFS= read -r candidate; do
+            if find "$candidate" -maxdepth 1 -name '*.c' -print -quit | grep -q . &&
+               find "$candidate/8086-SSE" -maxdepth 1 -name '*.c' -print -quit 2>/dev/null | grep -q .; then
+              source_dir="$candidate"
+              break
+            fi
+          done < <(find boxedwine-upstream -type d -name source | sort)
+          if [ -z "$source_dir" ]; then
+            echo "::error::SoftFloat C source tree (including 8086-SSE) was not found upstream."
+            find boxedwine-upstream -iname '*softfloat*' | head -60
+            exit 1
+          fi
+          mkdir -p lib/softfloat
+          cp -a "$source_dir" lib/softfloat/
+          echo "SoftFloat staged from $source_dir"
+          test -n "$(find lib/softfloat/source -maxdepth 1 -name '*.c' -print -quit)"
+          test -n "$(find lib/softfloat/source/8086-SSE -maxdepth 1 -name '*.c' -print -quit)"
       - name: Install original BoxedWine runtime dependencies
         run: |
           sudo apt-get update
