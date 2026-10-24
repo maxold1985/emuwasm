@@ -34,7 +34,13 @@ jobs:
       - name: Format actual generated JavaScript
         run: |
           # Format the real build outputs, not only a later copied version.
-          npx --yes prettier@3.6.2 --write build-wasm/emuwasm_pe32_inspect.js build-wasm/emuwasm_wine_link.js
+          # .gitignore excludes *.js, so --write silently skips them.
+          # Read JS from stdin with an explicit parser to bypass ignore rules.
+          for name in emuwasm_pe32_inspect emuwasm_wine_link; do
+            npx --yes prettier@3.6.2 --parser babel --print-width 100 \
+              < "build-wasm/${name}.js" > "build-wasm/${name}.formatted.js"
+            mv "build-wasm/${name}.formatted.js" "build-wasm/${name}.js"
+          done
           node --check build-wasm/emuwasm_pe32_inspect.js
           node --check build-wasm/emuwasm_wine_link.js
           node build-wasm/emuwasm_wine_link.js --help
