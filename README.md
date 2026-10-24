@@ -115,7 +115,11 @@ You need (1) your installed game directory, (2) the
 'boxedwine-full-runtime-linux-x86_64' binary artifact, and (3) a complete
 compatible Linux/Wine filesystem ZIP downloaded using the BoxedWine
 filesystem manager, e.g. TinyCore15Wine11.0.zip. The existing
-'wine/i386-windows' folder of PE DLLs alone is insufficient.
+'wine/i386-windows' folder of PE DLLs alone is insufficient. To obtain a
+compatible root ZIP, run the original Linux BoxedWine binary without
+arguments, then use its filesystem download dialog. Upstream documents the
+Linux filesystem directory as ~/.local/share/Boxedwine/FileSystems2.
+For running a downloaded binary from CI, make sure it is executable first.
 
 Run these commands inside WSL2 Ubuntu, substituting the actual paths
 to the BoxedWine binary and filesystem ZIP:
