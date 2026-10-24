@@ -76,6 +76,18 @@ int main() {
             static_cast<FD>(-1), 0) != stackBase)
         return 8;
 
+    // The same process that runs Wine-style PE DLL code also has a guest
+    // Windows TEB/PEB and FS segment, not only executable memory mappings.
+    emuwasm::pe32::Win32Environment win32;
+    if (!emuwasm::pe32::createWin32Environment(
+            exe, wine.modules(), 0x12000000, stackBase, K_PAGE_SIZE,
+            process->id, thread->id, win32, error) ||
+        !emuwasm::pe32::installWin32Environment(thread, win32, error)) {
+        std::fprintf(stderr, "Win32 process startup skeleton failed: %s\\n",
+                     error.c_str());
+        return 13;
+    }
+
     thread->cpu->eip.u32 = exe.entryPoint;
     thread->cpu->reg[0].u32 = 0;
     thread->cpu->reg[4].u32 = stackBase + K_PAGE_SIZE - 16;
@@ -102,5 +114,8 @@ int main() {
     return eax == 30 && eip == exe.entryPoint + 10 &&
            esp == initialEsp &&
            exeIat == kernel->loadBase + 0x1000 &&
-           kernelIat == ntdll->loadBase + 0x1000 ? 0 : 10;
+           kernelIat == ntdll->loadBase + 0x1000 &&
+           thread->cpu->seg[FS].address == win32.teb &&
+           thread->memory->readd(win32.teb + 0x30) == win32.peb &&
+           thread->memory->readd(win32.peb + 0x08) == exe.loadBase ? 0 : 10;
 }
