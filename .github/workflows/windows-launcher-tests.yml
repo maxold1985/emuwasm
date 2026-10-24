@@ -41,10 +41,15 @@ jobs:
           $diagnostics = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run_boxedwine_game_windows.ps1 -GameDirectory $game -WineRootZip $zip -BoxedWineExecutable $exe -ProfileDirectory (Join-Path $temp 'profile') -WinXP -DebugWine -NoSound -Pentium3 -DryRun 2>&1 | Out-String
           $diagnostics | Write-Host
           if ($LASTEXITCODE -ne 0) { throw "WinXP diagnostics dry-run failed: $LASTEXITCODE" }
-          foreach ($expected in @('wine-set-winxp.log', 'HKCU\Software\Wine', 'winxp', 'WINEDEBUG=+seh,+loaddll,+virtual', '-nosound', '-p3', 'prism3d-', '/mnt/drive_d')) {
+          foreach ($expected in @('wine-set-winxp.log', 'HKCU\Software\Wine', 'winxp', 'WINEDEBUG=+seh,+loaddll', '-nosound', '-p3', 'prism3d-', '/mnt/drive_d')) {
             if (-not $diagnostics.Contains($expected)) { throw "Expected diagnostic switch missing: $expected" }
           }
-          if ($diagnostics.Contains('-disableLinearMemory')) { throw 'The 26R1 binary does not support -disableLinearMemory' }
+          if ($diagnostics.Contains('WINEDEBUG=+seh,+loaddll,+virtual')) { throw 'Default debug tracing must not include expensive +virtual channel' }
+          if ($diagnostics.Contains('-disableLinearMemory')) { throw 'Legacy MMU must be opt-in for builds of the BoxedWine master branch' }
+          $legacy = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run_boxedwine_game_windows.ps1 -GameDirectory $game -WineRootZip $zip -BoxedWineExecutable $exe -ProfileDirectory (Join-Path $temp 'profile') -LegacyMMU -TraceVirtualMemory -DryRun 2>&1 | Out-String
+          $legacy | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "Legacy MMU dry-run failed: $LASTEXITCODE" }
+          if (-not $legacy.Contains('-disableLinearMemory') -or -not $legacy.Contains('WINEDEBUG=+seh,+loaddll,+virtual')) { throw 'Missing explicit legacy MMU and verbose memory-tracing switches' }
 
       - name: Regression - Wine setup success with emulator exit code 1 must still start game
         shell: pwsh
