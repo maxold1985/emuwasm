@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/boxedwine-windows.yml'
       - 'scripts/run_boxedwine_game_windows.ps1'
+      - 'scripts/run_prism3d_windows.bat'
 
 jobs:
   windows-x64:
@@ -72,11 +73,11 @@ jobs:
       - name: Add script and README to ZIP
         run: |
           Copy-Item emuwasm/scripts/run_boxedwine_game_windows.ps1 -Destination windows-package/run_prism3d.ps1
+          Copy-Item emuwasm/scripts/run_prism3d_windows.bat -Destination windows-package/run_prism3d.bat
           @'
           Windows x64 BoxedWine runtime, compiled from danoon2/Boxedwine.
           Launch Boxedwine.exe directly to open its user interface and download a complete Wine filesystem.
-          To test Prism3D: right-click run_prism3d.ps1 > Run with PowerShell,
-          or open a PowerShell terminal and run:
+          To test Prism3D: double-click run_prism3d.bat, or open a PowerShell terminal and run:
              powershell -ExecutionPolicy Bypass -File .\run_prism3d.ps1
           A full BoxedWine Wine Linux filesystem is required. A folder containing
           only Wine PE DLLs (i386-windows) will not work.
