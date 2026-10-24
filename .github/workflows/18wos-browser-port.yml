@@ -21,6 +21,7 @@ jobs:
         run: |
           python3 -m py_compile browser_port/server.py browser_port/test_server.py scripts/package_boxedwine_game.py
           node --check browser_port/port.js
+          node browser_port/test_port.mjs
       - name: Verify browser upload security and local WASM service
         run: |
           python3 -m unittest discover -s browser_port -p 'test_*.py' -v
