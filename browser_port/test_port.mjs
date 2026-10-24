@@ -2,7 +2,7 @@
 // Node builtins only; no browser framework or proprietary game files.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { runInNewContext } from "node:vm";
+import { createContext, runInContext } from "node:vm";
 
 const source = readFileSync(new URL("./port.js", import.meta.url), "utf8");
 const nodes = new Map([
@@ -32,7 +32,9 @@ const context = {
     WebAssembly,
     XMLHttpRequest: class {},
 };
-const call = (expr) => runInNewContext(source + "\n" + expr, context);
+const vmContext = createContext(context);
+runInContext(source, vmContext);
+const call = (expr) => runInContext(expr, vmContext);
 
 const url = new URL(call("buildBoxedwineURL();"));
 assert.equal(url.pathname, "/boxedwine.html");
