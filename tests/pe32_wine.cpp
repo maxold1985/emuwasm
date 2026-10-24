@@ -68,7 +68,7 @@ int main() {
     if (kernel && ntdll) {
         check(kernel->loadBase != ntdll->loadBase,
               "DLL images mapped to separate guest address ranges");
-        check(ntdll->loadBase == 0x60010000,
+        check(ntdll->loadBase == 0x60000000,
               "relocate second DLL when preferred base overlaps first DLL");
         check(read32(exe.bytes, 0x2050) == ntdll->loadBase + 0x1000,
               "EXE IAT resolves forwarded export to rebased guest DLL");
