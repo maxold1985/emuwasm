@@ -33,7 +33,7 @@ int main() {
           "EXE parser must reject DLL flag");
     check(load(kernelFile, 0x700000, kernel, error, true),
           "load synthetic kernel32 PE32 DLL at nonpreferred base");
-    check(kernel.isDll && kernel.entryPoint == 0x700000 &&
+    check(kernel.isDll && kernel.entryPoint == 0 &&
           kernel.exports.size() == 2 && kernel.exportModuleName == "kernel32.dll",
           "parse DLL with no DllMain and two exports");
     if (kernel.exports.size() == 2) {
