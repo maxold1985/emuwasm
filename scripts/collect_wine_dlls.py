@@ -32,7 +32,7 @@ def is_pe32_x86(path: Path) -> bool:
         # PE signature, IMAGE_FILE_MACHINE_I386 and PE32 optional header.
         return (
             len(header) == 26
-            and header[:4] == b"PE\\0\\0"
+            and header[:4] == bytes((0x50, 0x45, 0x00, 0x00))
             and struct.unpack_from("<H", header, 4)[0] == 0x014C
             and struct.unpack_from("<H", header, 24)[0] == 0x010B
         )
