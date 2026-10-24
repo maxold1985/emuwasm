@@ -302,8 +302,9 @@ bool load(const std::vector<std::uint8_t>& file,
         return fail(error, "truncated PE data directory");
     if (delayRva || delaySize)
         return fail(error, "delay-loaded PE imports are not supported yet");
-    if (tlsRva || tlsSize)
-        return fail(error, "PE TLS callbacks are not supported yet");
+    if ((tlsRva == 0) != (tlsSize == 0) ||
+        (tlsRva && (tlsSize < 24 || !fits(sizeOfImage, tlsRva, tlsSize))))
+        return fail(error, "invalid PE TLS directory range");
 
     Image image;
     image.isDll = isDll;
@@ -385,6 +386,33 @@ bool load(const std::vector<std::uint8_t>& file,
                         static_cast<std::uint32_t>(relocated));
             }
             at += blockSize;
+        }
+    }
+
+    // IMAGE_TLS_DIRECTORY32 stores absolute guest virtual addresses.
+    // Relocations above have already adjusted AddressOfCallbacks.
+    // Record callbacks for a future x86 runtime, but NEVER execute them
+    // in this diagnostic PE linking tool.
+    if (tlsRva) {
+        std::uint32_t callbackVa = 0;
+        if (!read32(image.bytes, static_cast<std::uint64_t>(tlsRva) + 12, callbackVa))
+            return fail(error, "truncated IMAGE_TLS_DIRECTORY32");
+        if (callbackVa) {
+            if (callbackVa < base ||
+                !fits(image.bytes.size(), static_cast<std::uint64_t>(callbackVa) - base, 4))
+                return fail(error, "TLS callback array outside PE image");
+            const std::uint64_t callbackRva = static_cast<std::uint64_t>(callbackVa) - base;
+            bool terminated = false;
+            for (unsigned i = 0; i < 1024; ++i) {
+                std::uint32_t address = 0;
+                if (!read32(image.bytes, callbackRva + static_cast<std::uint64_t>(i) * 4, address))
+                    return fail(error, "unterminated TLS callback array");
+                if (!address) { terminated = true; break; }
+                if (address < base || address - base >= image.bytes.size())
+                    return fail(error, "TLS callback target outside PE image");
+                image.tlsCallbacks.push_back(address);
+            }
+            if (!terminated) return fail(error, "too many TLS callbacks");
         }
     }
 
