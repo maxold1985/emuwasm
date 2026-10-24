@@ -1,0 +1,95 @@
+name: Full BoxedWine runtime (native and browser)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_wasm:
+        description: "Also compile full upstream BoxedWine for the browser (heavy/slow)"
+        required: false
+        type: boolean
+        default: false
+  push:
+    paths:
+      - '.github/workflows/boxedwine-full-runtime.yml'
+      - 'scripts/run_boxedwine_game.py'
+      - 'scripts/package_boxedwine_game.py'
+      - 'tests/test_boxedwine_game_tools.py'
+
+jobs:
+  game-tools:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate local game packager and launcher
+        run: python3 -m unittest discover -s tests -p 'test_boxedwine_game_tools.py' -v
+
+  boxedwine-native:
+    runs-on: ubuntu-24.04
+    needs: game-tools
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: danoon2/Boxedwine
+          ref: master
+          path: boxedwine-upstream
+          persist-credentials: false
+      - name: Install native SDL/Wine-host build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libsdl2-dev libcurl4-openssl-dev libgl-dev libssl-dev zlib1g-dev libminizip-dev
+      - name: Build ORIGINAL BoxedWine Linux runtime (full kernel, Wine guest interface, SDL)
+        run: |
+          make -C boxedwine-upstream/project/linux release JOBS=2
+          test -s boxedwine-upstream/project/linux/Build/Release/boxedwine
+          file boxedwine-upstream/project/linux/Build/Release/boxedwine
+          ldd boxedwine-upstream/project/linux/Build/Release/boxedwine
+      - name: Upload runnable native BoxedWine Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: boxedwine-full-runtime-linux-x86_64
+          path: boxedwine-upstream/project/linux/Build/Release/boxedwine
+          if-no-files-found: error
+      - name: Explain required external game and Wine filesystem files
+        run: |
+          echo "The runtime was built from BoxedWine GPLv2 sources." >> "$GITHUB_STEP_SUMMARY"
+          echo "To run a Windows game you must supply your own game installation and" >> "$GITHUB_STEP_SUMMARY"
+          echo "a complete compatible BoxedWine TinyCore/Wine Linux filesystem ZIP." >> "$GITHUB_STEP_SUMMARY"
+          echo "No game files or Wine filesystem are included in this artifact." >> "$GITHUB_STEP_SUMMARY"
+
+  boxedwine-browser:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_wasm }}
+    runs-on: ubuntu-24.04
+    needs: game-tools
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: danoon2/Boxedwine
+          ref: master
+          path: boxedwine-upstream
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: emscripten-core/emsdk
+          path: emsdk
+          persist-credentials: false
+      - name: Install Emscripten SDK
+        run: |
+          ./emsdk/emsdk install latest
+          ./emsdk/emsdk activate latest
+      - name: Compile ORIGINAL BoxedWine web runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          source emsdk/emsdk_env.sh
+          make -C boxedwine-upstream/project/emscripten release -j2
+          test -s boxedwine-upstream/project/emscripten/Build/Release/boxedwine.html
+          test -s boxedwine-upstream/project/emscripten/Build/Release/boxedwine.wasm
+          test -s boxedwine-upstream/project/emscripten/Build/Release/boxedwine.js
+      - name: Upload browser runtime (Wine root ZIP and game ZIP supplied separately)
+        uses: actions/upload-artifact@v4
+        with:
+          name: boxedwine-full-runtime-browser
+          path: boxedwine-upstream/project/emscripten/Build/Release/
+          if-no-files-found: error
