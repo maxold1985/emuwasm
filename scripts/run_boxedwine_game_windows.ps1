@@ -99,6 +99,20 @@ if (-not $DryRun) {
 }
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $runLog = Join-Path $LogDirectory ("prism3d-{0}.log" -f $timestamp)
+$launcherLog = Join-Path $LogDirectory ("launcher-{0}.log" -f $timestamp)
+if (-not $DryRun) {
+    # PowerShell creates this log BEFORE calling any guest program.
+    # It remains available even if BoxedWine fails before writing its log.
+    Set-Content -LiteralPath $launcherLog -Value @(
+        "EmuWasm Prism3D Windows launcher"
+        "Time: $(Get-Date -Format o)"
+        "Game: $fullExe"
+        "BoxedWine: $BoxedWineExecutable"
+        "Wine filesystem: $wineZipPath"
+        "Wine log: $runLog"
+        "WindowsXP: $WinXP"
+    ) -Encoding UTF8
+}
 
 $commonArguments = @(
     '-root', [IO.Path]::GetFullPath($ProfileDirectory),
@@ -139,7 +153,8 @@ Write-Host 'BoxedWine x64: iniciando Prism3D com Wine completo / SDL / OpenGL.' 
 Write-Host "Executavel: $fullExe"
 Write-Host "Wine root: $wineZipPath"
 Write-Host "Diretorio convidado: $guestWorkingDir"
-Write-Host "Log: $runLog"
+Write-Host "Log do jogo: $runLog"
+Write-Host "Log do iniciador: $launcherLog"
 if (-not (Test-Path -LiteralPath (Join-Path $gameRoot 'base.scs') -PathType Leaf)) {
     Write-Warning 'base.scs nao encontrado na raiz do jogo. Confira se toda a instalacao esta presente.'
 }
@@ -154,15 +169,44 @@ Write-Host ('Comando: "{0}" {1}' -f $BoxedWineExecutable, ($arguments -join ' ')
 if ($DryRun) { exit 0 }
 
 if ($WinXP) {
+    $wineRegLog = Join-Path $LogDirectory 'wine-set-winxp.log'
+    Add-Content -LiteralPath $launcherLog -Value 'Stage: Windows XP registry setup started'
     & $BoxedWineExecutable @winXPArguments
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Falha ao configurar Windows XP. Consulte $(Join-Path $LogDirectory 'wine-set-winxp.log')"
-        exit $LASTEXITCODE
+    $setupExitCode = $LASTEXITCODE
+
+    # The 26R1 upstream console emulator may return status 1 on shutdown
+    # even when Wine reg.exe reports success. Do not abort solely for that.
+    $registrySucceeded = $false
+    if (Test-Path -LiteralPath $wineRegLog -PathType Leaf) {
+        $registrySucceeded = [bool](Select-String -LiteralPath $wineRegLog -Pattern 'reg: The operation completed successfully' -SimpleMatch -Quiet)
+    }
+    Add-Content -LiteralPath $launcherLog -Value @(
+        "Stage: Windows XP registry setup returned $setupExitCode"
+        "Wine reg.exe completion confirmed: $registrySucceeded"
+    )
+    if (-not $registrySucceeded) {
+        Write-Warning "Windows XP nao confirmado (BoxedWine exit $setupExitCode). Executando o jogo para obter log. Veja $wineRegLog"
+    } elseif ($setupExitCode -ne 0) {
+        Write-Warning "Wine reg.exe concluiu corretamente, mas BoxedWine retornou $setupExitCode. Continuando para o jogo."
     }
 }
 # Launch the actual upstream Wine runtime. Game compatibility is unverified.
-& $BoxedWineExecutable @arguments
-$gameExitCode = $LASTEXITCODE
+Add-Content -LiteralPath $launcherLog -Value "Stage: Prism3D launch requested: $(Get-Date -Format o)"
+Write-Host "Iniciando /bin/wine $guestExe ..."
+try {
+    & $BoxedWineExecutable @arguments
+    $gameExitCode = $LASTEXITCODE
+} catch {
+    Add-Content -LiteralPath $launcherLog -Value "Stage: BoxedWine process failed to start: $($_.Exception.Message)"
+    throw
+}
+Add-Content -LiteralPath $launcherLog -Value @(
+    "Stage: Prism3D emulator process returned $gameExitCode"
+    "Wine game log created: $(Test-Path -LiteralPath $runLog -PathType Leaf)"
+)
+if (-not (Test-Path -LiteralPath $runLog -PathType Leaf)) {
+    Write-Warning "O log nativo do BoxedWine nao foi criado; consulte o log do iniciador: $launcherLog"
+}
 if ($null -ne $gameExitCode -and $gameExitCode -ne 0) {
     Write-Warning "Prism3D/BoxedWine finalizou com codigo $gameExitCode"
     if (Test-Path -LiteralPath $runLog -PathType Leaf) {
