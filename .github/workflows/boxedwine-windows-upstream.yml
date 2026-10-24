@@ -5,6 +5,9 @@ on:
   push:
     paths:
       - '.github/workflows/boxedwine-windows-upstream.yml'
+      - 'scripts/run_boxedwine_game_windows.ps1'
+      - 'scripts/run_prism3d_windows.bat'
+      - 'scripts/run_prism3d_winxp.bat'
 
 jobs:
   package-windows-x64:
@@ -50,6 +53,7 @@ jobs:
           }
           Copy-Item scripts/run_boxedwine_game_windows.ps1 windows-upstream/run_prism3d.ps1
           Copy-Item scripts/run_prism3d_windows.bat windows-upstream/run_prism3d.bat
+          Copy-Item scripts/run_prism3d_winxp.bat windows-upstream/run_prism3d_winxp.bat
           @'
           ORIGINAL RELEASE: BoxedWine 26R1.0, danoon2/Boxedwine
           This is a checksum-verified upstream Windows x64 console/SDL binary,
@@ -61,7 +65,10 @@ jobs:
 
           Double-click Boxedwine.exe to open the original emulator UI.
           Download a COMPLETE compatible Wine/Linux filesystem using its UI.
-          Then double-click run_prism3d.bat in this directory.
+          Then double-click run_prism3d_winxp.bat to test Windows XP compatibility,
+          or run_prism3d.bat to compare the previous default version.
+          Logs are under %LOCALAPPDATA%\EmuWasm\Logs. The original game files
+          are not included in this artifact.
 
           The game must already be installed on the host computer.
           Wine PE DLL files by themselves are not a complete filesystem.
