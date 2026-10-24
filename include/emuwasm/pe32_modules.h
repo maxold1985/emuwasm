@@ -27,6 +27,13 @@ public:
 
     const Image* findDll(const std::string& filename) const;
 
+    // Link every registered DLL's own imports. All IAT writes are staged;
+    // unresolved exports leave every DLL's IAT unchanged.
+    bool linkAllImports(std::string& error);
+
+    // Enumerate module names for mapping the DLL bytes into the guest MMU.
+    std::vector<std::string> dllNames() const;
+
 private:
     struct Module {
         std::string key;
