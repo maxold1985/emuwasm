@@ -171,23 +171,27 @@ bool parseExports(Image& image, std::uint32_t exportRva,
     if (!asciiZ(bytes, dllName, 260, image.exportModuleName))
         return fail(error, "invalid PE export module name");
     if (functionCount == 0 || functionCount > 8192 ||
-        nameCount > functionCount ||
+        nameCount > 8192 ||
         !fits(bytes.size(), functionTable, static_cast<std::uint64_t>(functionCount) * 4) ||
         !fits(bytes.size(), nameTable, static_cast<std::uint64_t>(nameCount) * 4) ||
         !fits(bytes.size(), ordinalTable, static_cast<std::uint64_t>(nameCount) * 2) ||
         static_cast<std::uint64_t>(ordinalBase) + functionCount - 1 > 0xffffffffULL)
         return fail(error, "invalid PE export address/name/ordinal tables");
 
-    std::vector<std::string> names(functionCount);
+    // Multiple export names may alias the same EAT slot. Preserve every
+    // alias while retaining one ordinal for all names of that function.
+    std::vector<std::vector<std::string>> names(functionCount);
     for (std::uint32_t i = 0; i < nameCount; ++i) {
         std::uint32_t nameRva = 0;
         std::uint16_t functionIndex = 0;
+        std::string name;
         if (!read32(bytes, static_cast<std::uint64_t>(nameTable) + i * 4u, nameRva) ||
             !read16(bytes, static_cast<std::uint64_t>(ordinalTable) + i * 2u,
                     functionIndex) ||
             functionIndex >= functionCount ||
-            !asciiZ(bytes, nameRva, 1024, names[functionIndex]))
+            !asciiZ(bytes, nameRva, 1024, name))
             return fail(error, "invalid PE named export");
+        names[functionIndex].push_back(std::move(name));
     }
 
     const std::uint64_t exportEnd = static_cast<std::uint64_t>(exportRva) + exportSize;
@@ -203,7 +207,6 @@ bool parseExports(Image& image, std::uint32_t exportRva,
         if (rva >= bytes.size())
             return fail(error, "PE export target outside image");
         Export entry;
-        entry.name = std::move(names[i]);
         entry.ordinal = ordinalBase + i;
         entry.rva = rva;
         if (rva >= exportRva && rva < exportEnd) {
@@ -214,7 +217,15 @@ bool parseExports(Image& image, std::uint32_t exportRva,
             if (static_cast<std::uint64_t>(rva) + entry.forwarder.size() >= exportEnd)
                 return fail(error, "forwarded export exceeds export directory");
         }
-        image.exports.push_back(std::move(entry));
+        if (names[i].empty()) {
+            image.exports.push_back(std::move(entry));
+        } else {
+            for (const auto& name : names[i]) {
+                Export alias = entry;
+                alias.name = name;
+                image.exports.push_back(std::move(alias));
+            }
+        }
     }
     return true;
 }
