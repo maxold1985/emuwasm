@@ -16,6 +16,10 @@ target_include_directories(emuwasm_probe PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/inc
 add_library(emuwasm_pe32 STATIC src/pe32.cpp src/pe32_modules.cpp)
 target_include_directories(emuwasm_pe32 PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
+# Inspect real on-disk PE32 images without executing guest code.
+add_executable(emuwasm_pe32_inspect tools/pe32_inspect.cpp)
+target_link_libraries(emuwasm_pe32_inspect PRIVATE emuwasm_pe32)
+
 if(EMUWASM_BUILD_EXTRACTED)
     file(GLOB_RECURSE BOXEDWINE_CPU CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/emulation/cpu/common/*.cpp"
