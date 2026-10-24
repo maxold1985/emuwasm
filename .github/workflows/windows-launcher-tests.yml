@@ -45,3 +45,46 @@ jobs:
             if (-not $diagnostics.Contains($expected)) { throw "Expected diagnostic switch missing: $expected" }
           }
           if ($diagnostics.Contains('-disableLinearMemory')) { throw 'The 26R1 binary does not support -disableLinearMemory' }
+
+      - name: Regression - Wine setup success with emulator exit code 1 must still start game
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'boxedwine-exit-one-test'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $game = Join-Path $root 'game'
+          New-Item -ItemType Directory -Force -Path $game | Out-Null
+          [IO.File]::WriteAllBytes((Join-Path $game 'prism3d.exe'), [byte[]](0x4d,0x5a))
+          $zip = Join-Path $root 'WineRoot.zip'
+          [IO.File]::WriteAllBytes($zip, [byte[]](0x50,0x4b,0x03,0x04))
+          $stub = Join-Path $root 'boxedwine-stub.cmd'
+          @'
+          @echo off
+          setlocal EnableExtensions
+          set "logfile="
+          :scan
+          if "%~1"=="" goto execute
+          if /i "%~1"=="-log" set "logfile=%~2"
+          shift
+          goto scan
+          :execute
+          if not defined logfile exit /b 3
+          echo BoxedWine mock invocation> "%logfile%"
+          echo %logfile% | findstr /i "wine-set-winxp" >nul
+          if not errorlevel 1 (
+              echo reg: The operation completed successfully>> "%logfile%"
+              exit /b 1
+          )
+          echo [sys] startup ...>> "%logfile%"
+          exit /b 1
+          '@ | Set-Content -LiteralPath $stub -Encoding Ascii
+          $logs = Join-Path $root 'logs'
+          $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run_boxedwine_game_windows.ps1 -WinXP -GameDirectory $game -WineRootZip $zip -BoxedWineExecutable $stub -ProfileDirectory (Join-Path $root 'profile') -LogDirectory $logs 2>&1 | Out-String
+          Write-Host $output
+          if ($LASTEXITCODE -ne 1) { throw "Expected simulated game exit 1, got $LASTEXITCODE" }
+          $gameLogs = @(Get-ChildItem -LiteralPath $logs -Filter 'prism3d-*.log' -File)
+          $launcherLogs = @(Get-ChildItem -LiteralPath $logs -Filter 'launcher-*.log' -File)
+          if ($gameLogs.Count -ne 1 -or $launcherLogs.Count -ne 1) { throw 'Expected separate Wine game and launcher logs' }
+          $stages = Get-Content -LiteralPath $launcherLogs[0].FullName -Raw
+          if (-not $stages.Contains('Wine reg.exe completion confirmed: True') -or -not $stages.Contains('Stage: Prism3D launch requested') -or -not $stages.Contains('Stage: Prism3D emulator process returned 1')) { throw "The second stage was skipped: $stages" }
+          if (-not (Get-Content -LiteralPath $gameLogs[0].FullName -Raw).Contains('[sys] startup')) { throw 'Game stub did not run after Wine setup' }
