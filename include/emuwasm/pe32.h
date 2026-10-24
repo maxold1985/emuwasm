@@ -28,7 +28,19 @@ struct Import {
     std::uint32_t iatRva = 0;
 };
 
+// One export from an IMAGE_EXPORT_DIRECTORY. Forwarded exports contain a
+// DLL.symbol (or DLL.#ordinal) string instead of executable code.
+struct Export {
+    std::string name;                 // empty for ordinal-only exports
+    std::uint32_t ordinal = 0;       // IMAGE_EXPORT_DIRECTORY.Base + EAT index
+    std::uint32_t rva = 0;
+    std::string forwarder;            // nonempty if EAT RVA is inside export directory
+};
+
 struct Image {
+    bool isDll = false;
+    std::string exportModuleName;
+    std::vector<Export> exports;
     std::uint32_t preferredBase = 0;
     std::uint32_t loadBase = 0;
     std::uint32_t entryPoint = 0; // absolute guest virtual address
@@ -41,11 +53,13 @@ struct Image {
 // Parse a little-endian x86 PE32 executable and apply HIGHLOW relocations.
 // Imported DLL names, symbols, ordinals and IAT slots are discovered, but no
 // host Windows code is invoked and no Wine DLLs are loaded by this function.
-// Delay-load imports and TLS are not supported yet.
+// Delay-load imports and TLS are not supported yet. Set allowDll=true for
+// DLL images; ordinary EXEs must not be accepted as DLLs (or vice versa).
 bool load(const std::vector<std::uint8_t>& file,
           std::uint32_t requestedBase,
           Image& output,
-          std::string& error);
+          std::string& error,
+          bool allowDll = false);
 
 // A future Wine-compatible module loader supplies GUEST virtual addresses,
 // not native C++/WASM function pointers. A callback returning false denotes
