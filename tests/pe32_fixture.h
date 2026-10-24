@@ -211,5 +211,49 @@ inline std::vector<std::uint8_t> makePe32Dll(
     return b;
 }
 
+// DLL with a REAL PE import table: exported kernel32.GetTickCount calls
+// ntdll.RtlGetTickCount via its own IAT, then returns to the EXE. This
+// exercises recursive dependencies and IAT linking in separate guest DLLs.
+inline std::vector<std::uint8_t> makePe32DllWithImports() {
+    auto b = makePe32Dll("kernel32.dll", "GetTickCount");
+    if (b.empty()) return {};
+    // Reuse third section for .idata; relocate its old relocation directory
+    // into spare .edata bytes (outside the export directory's RVA range).
+    constexpr std::size_t third = 0x178 + 2 * 40;
+    for (unsigned i = 0; i < 8; ++i) b[third + i] = 0;
+    b[third] = '.'; b[third+1] = 'i'; b[third+2] = 'd';
+    b[third+3] = 'a'; b[third+4] = 't'; b[third+5] = 'a';
+    put32(b, third + 36, 0xc0000040); // initialized, read/write
+
+    put32(b, 0x98 + 96 + 8, 0x3000);  // IMAGE_DIRECTORY_ENTRY_IMPORT
+    put32(b, 0x98 + 96 + 12, 40);     // descriptor + zero terminator
+    put32(b, 0x98 + 96 + 5 * 8, 0x20c0); // relocation directory in .edata
+    put32(b, 0x98 + 96 + 5 * 8 + 4, 12);
+    put32(b, 0x4c0, 0x1000);          // reloc page RVA
+    put32(b, 0x4c4, 12);              // reloc block size
+    put16(b, 0x4c8, 0x3002);          // HIGHLOW for CALL [IAT] address
+    put16(b, 0x4ca, 0);
+
+    // IMAGE_IMPORT_DESCRIPTOR at RVA 0x3000, file offset 0x600.
+    put32(b, 0x600, 0x3040);          // OriginalFirstThunk
+    put32(b, 0x60c, 0x3080);          // DLL name
+    put32(b, 0x610, 0x3050);          // FirstThunk / IAT
+    put32(b, 0x640, 0x3090);          // import name RVA
+    put32(b, 0x650, 0x3090);          // IAT initially name RVA
+    constexpr char dll[] = "ntdll.dll";
+    constexpr char symbol[] = "RtlGetTickCount";
+    for (std::size_t i = 0; i < sizeof(dll); ++i)
+        b[0x680 + i] = static_cast<std::uint8_t>(dll[i]);
+    put16(b, 0x690, 0);               // import hint
+    for (std::size_t i = 0; i < sizeof(symbol); ++i)
+        b[0x692 + i] = static_cast<std::uint8_t>(symbol[i]);
+
+    // CALL DWORD PTR [0x603050]; RET
+    b[0x200] = 0xff; b[0x201] = 0x15;
+    put32(b, 0x202, 0x603050);
+    b[0x206] = 0xc3;
+    return b;
+}
+
 } // namespace test
 } // namespace emuwasm
