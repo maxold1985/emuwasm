@@ -11,6 +11,8 @@ param(
     [string]$LogDirectory = "",
     [switch]$WinXP,
     [switch]$DebugWine,
+    [switch]$TraceVirtualMemory,
+    [switch]$LegacyMMU,
     [switch]$NoSound,
     [switch]$Pentium3,
     [switch]$DryRun
@@ -111,6 +113,8 @@ if (-not $DryRun) {
         "Wine filesystem: $wineZipPath"
         "Wine log: $runLog"
         "WindowsXP: $WinXP"
+        "LegacyMMU: $LegacyMMU"
+        "TraceVirtualMemory: $TraceVirtualMemory"
     ) -Encoding UTF8
 }
 
@@ -121,8 +125,16 @@ $commonArguments = @(
     '-w', $guestWorkingDir,
     '-resolution', $Resolution
 )
-if ($DebugWine) {
+# The +virtual channel generates enormous logs during a 150 MiB allocation
+# and adds substantial overhead. Enable it only for explicit tracing.
+if ($TraceVirtualMemory) {
     $commonArguments += @('-env', 'WINEDEBUG=+seh,+loaddll,+virtual')
+} elseif ($DebugWine) {
+    $commonArguments += @('-env', 'WINEDEBUG=+seh,+loaddll')
+}
+if ($LegacyMMU) {
+    # Available in newer BoxedWine master builds. NOT supported by 26R1.
+    $commonArguments += '-disableLinearMemory'
 }
 if ($NoSound) {
     $commonArguments += '-nosound'
@@ -153,6 +165,10 @@ Write-Host 'BoxedWine x64: iniciando Prism3D com Wine completo / SDL / OpenGL.' 
 Write-Host "Executavel: $fullExe"
 Write-Host "Wine root: $wineZipPath"
 Write-Host "Diretorio convidado: $guestWorkingDir"
+if ($LegacyMMU) {
+    Write-Host 'Memoria: modo legado MMU/guarded cache (BoxedWine master)' -ForegroundColor Yellow
+    Write-Warning 'A opcao -disableLinearMemory NAO funciona no BoxedWine 26R1. Use o pacote compilado do master.'
+}
 Write-Host "Log do jogo: $runLog"
 Write-Host "Log do iniciador: $launcherLog"
 if (-not (Test-Path -LiteralPath (Join-Path $gameRoot 'base.scs') -PathType Leaf)) {
@@ -228,6 +244,6 @@ if ($null -ne $gameExitCode -and $gameExitCode -ne 0) {
             Write-Host 'Nenhum erro explicito encontrado no log. A parada apos memory pool nao prova falta de RAM.'
         }
     }
-    Write-Host 'Proximos testes: -WinXP; depois -NoSound; depois -Pentium3; -DebugWine gera rastreamento adicional.'
+    Write-Host 'Proximos testes: comparar -LegacyMMU (BoxedWine master), -NoSound e -Pentium3. -TraceVirtualMemory gera log extenso.'
     exit $gameExitCode
 }
