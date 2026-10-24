@@ -1,0 +1,37 @@
+name: BoxedWine x86 CPU integration diagnostics
+on:
+  workflow_dispatch:
+
+jobs:
+  boxedwine-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install original BoxedWine runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsdl2-dev libcurl4-openssl-dev libgl-dev
+      - name: Configure original CPU and soft-MMU integration
+        run: |
+          cmake -S . -B build-boxedwine -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DEMUWASM_BUILD_EXTRACTED=ON \
+            -DEMUWASM_BUILD_KERNEL_OBJECTS=ON \
+            -DEMUWASM_BUILD_X86_TEST=ON
+      - name: Compile real x86 CPU and PE32 bridge
+        run: cmake --build build-boxedwine --parallel 2
+      - name: Execute CPU and PE32 tests with diagnostics
+        run: |
+          ulimit -c 0
+          ctest --test-dir build-boxedwine -R '^boxedwine_' --output-on-failure --timeout 60
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boxedwine-cpu-diagnostics
+          path: |
+            build-boxedwine/Testing/Temporary/LastTest.log
+            build-boxedwine/CMakeFiles/CMakeConfigureLog.yaml
+          if-no-files-found: ignore
