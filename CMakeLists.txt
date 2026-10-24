@@ -111,6 +111,9 @@ if(EMUWASM_BUILD_EXTRACTED)
             "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl/sdlcallback.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/platform/sdl/kdspaudio.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/source/kernel/devs/devinput.cpp"
+            # Upstream BoxedWine now calls CD-ROM helpers from kprocess/SDL.
+            # Link their ORIGINAL implementation instead of adding dummy stubs.
+            "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/source/kernel/devs/devcdrom.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/boxedwine-upstream/source/sdl/singleThreaded/mainloop.cpp")
         target_compile_features(emuwasm_boxedwine_platform PRIVATE cxx_std_20)
         # The upstream SDL host defines its own main() unless built for tests.
