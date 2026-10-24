@@ -126,5 +126,48 @@ bool ModuleRegistry::linkImports(Image& image, std::string& error) const {
         }, error);
 }
 
+
+std::vector<std::string> ModuleRegistry::dllNames() const {
+    std::vector<std::string> names;
+    names.reserve(modules_.size());
+    for (const auto& module : modules_)
+        names.push_back(module.key);
+    return names;
+}
+
+bool ModuleRegistry::linkAllImports(std::string& error) {
+    error.clear();
+    struct PendingWrite {
+        std::size_t moduleIndex;
+        std::uint32_t rva;
+        std::uint32_t address;
+    };
+    std::vector<PendingWrite> writes;
+    // Resolve everything first; never partially patch a module set.
+    for (std::size_t index = 0; index < modules_.size(); ++index) {
+        const auto& module = modules_[index];
+        for (const auto& imported : module.image.imports) {
+            std::uint32_t address = 0;
+            if (static_cast<std::uint64_t>(imported.iatRva) + 4 >
+                module.image.bytes.size() ||
+                !resolve(imported, address) || !address) {
+                error = "unresolved import in " + module.key + ": " +
+                        imported.dll + "!" +
+                        (imported.byOrdinal ? "#" + std::to_string(imported.ordinal)
+                                            : imported.name);
+                return false;
+            }
+            writes.push_back({index, imported.iatRva, address});
+        }
+    }
+    for (const auto& write : writes) {
+        auto& bytes = modules_[write.moduleIndex].image.bytes;
+        for (unsigned i = 0; i < 4; ++i)
+            bytes[write.rva + i] =
+                static_cast<std::uint8_t>(write.address >> (8 * i));
+    }
+    return true;
+}
+
 } // namespace pe32
 } // namespace emuwasm
