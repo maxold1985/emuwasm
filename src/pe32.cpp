@@ -148,12 +148,84 @@ bool parseImports(Image& image, std::uint32_t importRva,
     return true;
 }
 
+// IMAGE_EXPORT_DIRECTORY is a table of RVAs. Forwarded exports point to
+// ASCII "module.symbol" strings inside the export directory's RVA range.
+bool parseExports(Image& image, std::uint32_t exportRva,
+                  std::uint32_t exportSize, std::string& error) {
+    if (!exportRva && !exportSize) return true;
+    if (!exportRva || exportSize < 40 ||
+        !fits(image.bytes.size(), exportRva, exportSize))
+        return fail(error, "invalid PE export directory range");
+
+    const auto& bytes = image.bytes;
+    std::uint32_t dllName = 0, ordinalBase = 0, functionCount = 0;
+    std::uint32_t nameCount = 0, functionTable = 0, nameTable = 0, ordinalTable = 0;
+    if (!read32(bytes, exportRva + 12, dllName) ||
+        !read32(bytes, exportRva + 16, ordinalBase) ||
+        !read32(bytes, exportRva + 20, functionCount) ||
+        !read32(bytes, exportRva + 24, nameCount) ||
+        !read32(bytes, exportRva + 28, functionTable) ||
+        !read32(bytes, exportRva + 32, nameTable) ||
+        !read32(bytes, exportRva + 36, ordinalTable))
+        return fail(error, "truncated IMAGE_EXPORT_DIRECTORY");
+    if (!asciiZ(bytes, dllName, 260, image.exportModuleName))
+        return fail(error, "invalid PE export module name");
+    if (functionCount == 0 || functionCount > 8192 ||
+        nameCount > functionCount ||
+        !fits(bytes.size(), functionTable, static_cast<std::uint64_t>(functionCount) * 4) ||
+        !fits(bytes.size(), nameTable, static_cast<std::uint64_t>(nameCount) * 4) ||
+        !fits(bytes.size(), ordinalTable, static_cast<std::uint64_t>(nameCount) * 2) ||
+        static_cast<std::uint64_t>(ordinalBase) + functionCount - 1 > 0xffffffffULL)
+        return fail(error, "invalid PE export address/name/ordinal tables");
+
+    std::vector<std::string> names(functionCount);
+    for (std::uint32_t i = 0; i < nameCount; ++i) {
+        std::uint32_t nameRva = 0;
+        std::uint16_t functionIndex = 0;
+        if (!read32(bytes, static_cast<std::uint64_t>(nameTable) + i * 4u, nameRva) ||
+            !read16(bytes, static_cast<std::uint64_t>(ordinalTable) + i * 2u,
+                    functionIndex) ||
+            functionIndex >= functionCount ||
+            !asciiZ(bytes, nameRva, 1024, names[functionIndex]))
+            return fail(error, "invalid PE named export");
+    }
+
+    const std::uint64_t exportEnd = static_cast<std::uint64_t>(exportRva) + exportSize;
+    for (std::uint32_t i = 0; i < functionCount; ++i) {
+        std::uint32_t rva = 0;
+        if (!read32(bytes, static_cast<std::uint64_t>(functionTable) + i * 4u, rva))
+            return fail(error, "truncated PE export function table");
+        if (!rva) {
+            if (!names[i].empty())
+                return fail(error, "named export points to an empty EAT slot");
+            continue;
+        }
+        if (rva >= bytes.size())
+            return fail(error, "PE export target outside image");
+        Export entry;
+        entry.name = std::move(names[i]);
+        entry.ordinal = ordinalBase + i;
+        entry.rva = rva;
+        if (rva >= exportRva && rva < exportEnd) {
+            if (!asciiZ(bytes, rva, 1024, entry.forwarder) ||
+                entry.forwarder.find('.') == std::string::npos)
+                return fail(error, "invalid PE forwarded export");
+            // A forwarder must be terminated inside its directory.
+            if (static_cast<std::uint64_t>(rva) + entry.forwarder.size() >= exportEnd)
+                return fail(error, "forwarded export exceeds export directory");
+        }
+        image.exports.push_back(std::move(entry));
+    }
+    return true;
+}
+
 } // namespace
 
 bool load(const std::vector<std::uint8_t>& file,
           std::uint32_t requestedBase,
           Image& output,
-          std::string& error) {
+          std::string& error,
+          bool allowDll) {
     error.clear();
     output = Image{};
 
@@ -174,9 +246,10 @@ bool load(const std::vector<std::uint8_t>& file,
         !read16(file, static_cast<std::uint64_t>(peOffset) + 22, fileFlags))
         return fail(error, "invalid PE/COFF header");
 
+    const bool isDll = (fileFlags & 0x2000u) != 0;
     if (machine != kMachineI386 || (fileFlags & 0x0002u) == 0 ||
-        (fileFlags & 0x2000u) != 0)
-        return fail(error, "only executable i386 PE32 images are supported");
+        isDll != allowDll)
+        return fail(error, "expected an executable i386 PE32 image of the requested EXE/DLL type");
     if (sectionCount == 0 || sectionCount > 96)
         return fail(error, "invalid section count");
 
@@ -207,9 +280,11 @@ bool load(const std::vector<std::uint8_t>& file,
     if (sectionTable + static_cast<std::uint64_t>(sectionCount) * 40 > headersSize)
         return fail(error, "section headers extend beyond SizeOfHeaders");
 
+    std::uint32_t exportRva = 0, exportSize = 0;
     std::uint32_t importRva = 0, importSize = 0, relocRva = 0, relocSize = 0;
     std::uint32_t tlsRva = 0, tlsSize = 0, delayRva = 0, delaySize = 0;
-    if (!directory(file, optional, optionalSize, directoryCount, 1, importRva, importSize) ||
+    if (!directory(file, optional, optionalSize, directoryCount, 0, exportRva, exportSize) ||
+        !directory(file, optional, optionalSize, directoryCount, 1, importRva, importSize) ||
         !directory(file, optional, optionalSize, directoryCount, 5, relocRva, relocSize) ||
         !directory(file, optional, optionalSize, directoryCount, 9, tlsRva, tlsSize) ||
         !directory(file, optional, optionalSize, directoryCount, 13, delayRva, delaySize))
@@ -220,6 +295,7 @@ bool load(const std::vector<std::uint8_t>& file,
         return fail(error, "PE TLS callbacks are not supported yet");
 
     Image image;
+    image.isDll = isDll;
     image.preferredBase = preferredBase;
     image.loadBase = base;
     image.entryPoint = base + entryRva;
@@ -265,7 +341,7 @@ bool load(const std::vector<std::uint8_t>& file,
             static_cast<std::uint64_t>(entryRva) < static_cast<std::uint64_t>(rva) + mappedSize)
             executableEntry = true;
     }
-    if (!executableEntry)
+    if (!executableEntry && !(isDll && entryRva == 0))
         return fail(error, "entry point is not in an executable section");
 
     if (base != preferredBase) {
@@ -301,7 +377,8 @@ bool load(const std::vector<std::uint8_t>& file,
         }
     }
 
-    if (!parseImports(image, importRva, importSize, error))
+    if (!parseImports(image, importRva, importSize, error) ||
+        !parseExports(image, exportRva, exportSize, error))
         return false;
     output = std::move(image);
     return true;
