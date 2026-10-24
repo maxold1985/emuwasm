@@ -1,0 +1,40 @@
+name: Windows Prism3D launcher smoke tests
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/run_boxedwine_game_windows.ps1'
+      - 'scripts/run_prism3d_windows.bat'
+      - '.github/workflows/windows-launcher-tests.yml'
+
+jobs:
+  powershell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Windows PowerShell syntax
+        shell: pwsh
+        run: |
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/run_boxedwine_game_windows.ps1), [ref]$null, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | Format-List | Out-String | Write-Host
+            throw "PowerShell parse failed."
+          }
+      - name: Execute launcher dry-run against synthetic game folder
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $temp = Join-Path $env:RUNNER_TEMP 'prism3d-smoke'
+          New-Item -ItemType Directory -Force -Path $temp | Out-Null
+          $game = Join-Path $temp 'game'
+          New-Item -ItemType Directory -Force -Path $game | Out-Null
+          [IO.File]::WriteAllBytes((Join-Path $game 'prism3d.exe'), [byte[]](0x4D,0x5A))
+          $zip = Join-Path $temp 'WineRoot.zip'
+          [IO.File]::WriteAllBytes($zip, [byte[]](0x50,0x4B,0x03,0x04))
+          $exe = (Get-Command powershell.exe).Source
+          $text = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run_boxedwine_game_windows.ps1 -GameDirectory $game -WineRootZip $zip -BoxedWineExecutable $exe -ProfileDirectory (Join-Path $temp 'profile') -DryRun 2>&1 | Out-String
+          $text | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "Windows dry-run failed: $LASTEXITCODE" }
+          if ($text -notmatch '/mnt/drive_d' -or $text -notmatch 'D:\\prism3d.exe') { throw 'Expected mapped Windows drive or POSIX working directory not found' }
