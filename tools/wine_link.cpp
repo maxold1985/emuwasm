@@ -36,8 +36,19 @@ int main(int argc, char** argv) {
     }
     // Windows searches the application directory before system locations.
     // Preserve that priority for game-specific DLLs such as p3shared.dll.
-    if (!executable.empty() && includeGameDirectory)
-        directories.insert(directories.begin(), fs::absolute(executable).parent_path());
+    if (!executable.empty() && includeGameDirectory) {
+        // Emscripten uses POSIX std::filesystem even under Node on Windows.
+        // For C:\\Games\\game.exe, parent_path() may be empty because the
+        // backslash is not recognized as a path separator. NODERAWFS still
+        // forwards the original Windows pathname to Node's host filesystem.
+        const std::string exeName = executable.string();
+        const auto separator = exeName.find_last_of("/\\\\");
+        if (separator != std::string::npos)
+            directories.insert(directories.begin(),
+                               fs::path(exeName.substr(0, separator)));
+        else
+            directories.insert(directories.begin(), fs::current_path());
+    }
 
     // Always add the bundled Wine fallback after explicit directories.
     {
