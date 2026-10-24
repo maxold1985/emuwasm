@@ -48,7 +48,17 @@ jobs:
       - name: Install original BoxedWine runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ libsdl2-dev libcurl4-openssl-dev libgl-dev
+          sudo apt-get install -y cmake ninja-build g++ libsdl2-dev libcurl4-openssl-dev libgl-dev libsimde-dev
+      - name: Stage SIMDe headers for BoxedWine
+        shell: bash
+        run: |
+          set -euo pipefail
+          # cpu.h includes simde/x86/sse.h; CMake already adds lib/simde
+          # to the BoxedWine target's include directories.
+          test -f /usr/include/simde/x86/sse.h
+          mkdir -p lib/simde
+          cp -a /usr/include/simde lib/simde/
+          test -f lib/simde/simde/x86/sse.h
       - name: Configure original CPU and soft-MMU integration
         run: |
           cmake -S . -B build-boxedwine -G Ninja -DCMAKE_BUILD_TYPE=Debug \
