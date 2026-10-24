@@ -59,6 +59,95 @@ bool fail(std::string& error, const char* reason) {
     return false;
 }
 
+bool asciiZ(const std::vector<std::uint8_t>& bytes, std::uint64_t rva,
+            std::size_t maxLength, std::string& result) {
+    result.clear();
+    if (rva >= bytes.size()) return false;
+    for (std::size_t i = 0; i < maxLength; ++i) {
+        if (!fits(bytes.size(), rva + i, 1)) return false;
+        const auto ch = bytes[static_cast<std::size_t>(rva + i)];
+        if (!ch) return !result.empty();
+        if (ch < 0x20 || ch > 0x7e) return false;
+        result.push_back(static_cast<char>(ch));
+    }
+    return false; // missing NUL within the allowed name length
+}
+
+// Parse IMAGE_IMPORT_DESCRIPTOR and thunk arrays from the EXPANDED image,
+// not from file offsets. Wine's PE loader follows this same RVA distinction.
+// A separate module loader must later supply guest export addresses.
+bool parseImports(Image& image, std::uint32_t importRva,
+                  std::uint32_t importSize, std::string& error) {
+    if (!importRva && !importSize) return true;
+    if (!importRva || !importSize ||
+        !fits(image.bytes.size(), importRva, importSize))
+        return fail(error, "invalid import directory range");
+
+    const std::uint64_t end = static_cast<std::uint64_t>(importRva) + importSize;
+    std::uint64_t at = importRva;
+    bool terminated = false;
+    for (unsigned descriptor = 0; descriptor < 256; ++descriptor) {
+        if (end - at < 20)
+            return fail(error, "unterminated import descriptor table");
+
+        std::uint32_t fields[5] = {};
+        for (unsigned n = 0; n < 5; ++n)
+            if (!read32(image.bytes, at + n * 4, fields[n]))
+                return fail(error, "truncated import descriptor");
+        at += 20;
+
+        if (!fields[0] && !fields[1] && !fields[2] &&
+            !fields[3] && !fields[4]) {
+            terminated = true;
+            break;
+        }
+        const std::uint32_t lookupRva = fields[0] ? fields[0] : fields[4];
+        const std::uint32_t dllNameRva = fields[3];
+        const std::uint32_t iatRva = fields[4];
+        std::string dll;
+        if (!lookupRva || !iatRva ||
+            !asciiZ(image.bytes, dllNameRva, 260, dll))
+            return fail(error, "invalid import DLL name or thunk RVA");
+
+        bool thunkTerminated = false;
+        for (unsigned n = 0; n < 8192; ++n) {
+            const std::uint64_t lookupAt = static_cast<std::uint64_t>(lookupRva) + n * 4u;
+            const std::uint64_t iatAt = static_cast<std::uint64_t>(iatRva) + n * 4u;
+            std::uint32_t thunk = 0, iatValue = 0;
+            if (!read32(image.bytes, lookupAt, thunk) ||
+                !read32(image.bytes, iatAt, iatValue))
+                return fail(error, "import thunk/IAT exceeds image bounds");
+            if (!thunk) {
+                thunkTerminated = true;
+                break;
+            }
+            if (image.imports.size() >= 8192)
+                return fail(error, "too many PE imports");
+            Import imported;
+            imported.dll = dll;
+            imported.iatRva = static_cast<std::uint32_t>(iatAt);
+            imported.byOrdinal = (thunk & 0x80000000u) != 0;
+            if (imported.byOrdinal) {
+                if (thunk & 0x7fff0000u)
+                    return fail(error, "invalid ordinal import thunk");
+                imported.ordinal = static_cast<std::uint16_t>(thunk);
+            } else {
+                const std::uint32_t nameRva = thunk;
+                if (!read16(image.bytes, nameRva, imported.hint) ||
+                    !asciiZ(image.bytes, static_cast<std::uint64_t>(nameRva) + 2,
+                            1024, imported.name))
+                    return fail(error, "invalid IMAGE_IMPORT_BY_NAME entry");
+            }
+            image.imports.push_back(std::move(imported));
+        }
+        if (!thunkTerminated)
+            return fail(error, "unterminated import thunk array");
+    }
+    if (!terminated)
+        return fail(error, "too many import descriptors or missing terminator");
+    return true;
+}
+
 } // namespace
 
 bool load(const std::vector<std::uint8_t>& file,
@@ -125,8 +214,8 @@ bool load(const std::vector<std::uint8_t>& file,
         !directory(file, optional, optionalSize, directoryCount, 9, tlsRva, tlsSize) ||
         !directory(file, optional, optionalSize, directoryCount, 13, delayRva, delaySize))
         return fail(error, "truncated PE data directory");
-    if (importRva || importSize || delayRva || delaySize)
-        return fail(error, "PE imports require a Wine-compatible DLL resolver (not implemented)");
+    if (delayRva || delaySize)
+        return fail(error, "delay-loaded PE imports are not supported yet");
     if (tlsRva || tlsSize)
         return fail(error, "PE TLS callbacks are not supported yet");
 
@@ -212,7 +301,36 @@ bool load(const std::vector<std::uint8_t>& file,
         }
     }
 
+    if (!parseImports(image, importRva, importSize, error))
+        return false;
     output = std::move(image);
+    return true;
+}
+
+bool bindImports(Image& image, const ImportResolver& resolver, std::string& error) {
+    error.clear();
+    if (image.imports.empty()) return true;
+    if (!resolver)
+        return fail(error, "PE import resolver is not configured");
+
+    // Resolve all symbols before changing any IAT entry. A failed DLL or
+    // export must not leave a half-patched guest image behind.
+    std::vector<std::uint32_t> resolved;
+    resolved.reserve(image.imports.size());
+    for (const auto& imported : image.imports) {
+        std::uint32_t address = 0;
+        if (!fits(image.bytes.size(), imported.iatRva, 4))
+            return fail(error, "import IAT slot outside guest image");
+        if (!resolver(imported, address) || !address) {
+            error = "unresolved Windows import: " + imported.dll + "!" +
+                    (imported.byOrdinal ? ("#" + std::to_string(imported.ordinal))
+                                        : imported.name);
+            return false;
+        }
+        resolved.push_back(address);
+    }
+    for (std::size_t i = 0; i < image.imports.size(); ++i)
+        write32(image.bytes, image.imports[i].iatRva, resolved[i]);
     return true;
 }
 
