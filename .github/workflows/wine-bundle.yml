@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/wine-bundle.yml'
       - 'scripts/collect_wine_dlls.py'
+      - 'scripts/test_collect_wine_dlls.py'
       - 'tools/wine_link.cpp'
 
 jobs:
@@ -14,6 +15,8 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+      - name: Test Wine PE32 DLL validator
+        run: python3 -m unittest discover -s scripts -p 'test_collect_wine_dlls.py' -v
       - name: Install Wine source-build dependencies
         run: |
           sudo apt-get update
@@ -49,6 +52,8 @@ jobs:
             dlls/user32/i386-windows/user32.dll
       - name: Validate and collect Wine DLLs
         run: |
+          # Make missing files and incorrect architectures obvious in CI logs.
+          find wine-build/dlls -path '*/i386-windows/*.dll' -type f -printf '%p %s bytes\\n' | head -n 35
           python3 scripts/collect_wine_dlls.py \
             --source wine-build/dlls \
             --output dist-wine \
