@@ -69,7 +69,8 @@ jobs:
           retention-days: 30
 
   windows:
-    runs-on: windows-latest
+    # Pin runner image that provides the VS 2022 generator.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - name: Configure Visual Studio 2022 x64
