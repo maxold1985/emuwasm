@@ -1,0 +1,77 @@
+name: Windows BoxedWine 26R1 verified upstream package
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/boxedwine-windows-upstream.yml'
+
+jobs:
+  package-windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified original BoxedWine 26R1 Windows release
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/danoon2/Boxedwine/releases/download/26R1.0/Boxedwine26R1Windows-x86-x64-Arm64.zip'
+          Invoke-WebRequest -Uri $url -OutFile original-boxedwine.zip -MaximumRedirection 10
+          $actual = (Get-FileHash original-boxedwine.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = '042907059cb01c5b5f407f87aee0cbdeee53f3a374718751281670e0a715bc85'
+          if ($actual -ne $expected) { throw "Upstream release checksum mismatch: $actual" }
+          Write-Host "Verified original upstream SHA-256: $actual"
+          Expand-Archive original-boxedwine.zip -DestinationPath original-release -Force
+          Get-ChildItem original-release -Depth 2 -File | Select-Object FullName
+
+      - name: Package Windows native console runtime and game launcher
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidate = @(Get-ChildItem original-release -Recurse -Filter Boxedwine_console.exe -File |
+            Where-Object { $_.FullName -match '(?i)Win64' })
+          if ($candidate.Count -ne 1) {
+            throw "Expected exactly one x64 upstream Boxedwine_console.exe; found $($candidate.Count)"
+          }
+          $dir = $candidate[0].DirectoryName
+          New-Item -ItemType Directory -Force -Path windows-upstream | Out-Null
+          Copy-Item $candidate[0].FullName -Destination windows-upstream/Boxedwine.exe
+          Get-ChildItem $dir -Filter '*.dll' -File | Copy-Item -Destination windows-upstream
+          # Original binary must be Windows AMD64 PE32+.
+          $bytes = [IO.File]::ReadAllBytes((Resolve-Path windows-upstream/Boxedwine.exe))
+          if ([BitConverter]::ToUInt16($bytes, 0) -ne 0x5a4d) { throw 'Missing MZ signature' }
+          $offset = [BitConverter]::ToInt32($bytes, 0x3c)
+          if ($offset -lt 0 -or $offset + 6 -gt $bytes.Length) { throw 'Invalid PE offset' }
+          if ([BitConverter]::ToUInt32($bytes, $offset) -ne 0x4550) { throw 'Invalid PE signature' }
+          if ([BitConverter]::ToUInt16($bytes, $offset + 4) -ne 0x8664) {
+            throw 'Original Windows binary is not AMD64'
+          }
+          Copy-Item scripts/run_boxedwine_game_windows.ps1 windows-upstream/run_prism3d.ps1
+          Copy-Item scripts/run_prism3d_windows.bat windows-upstream/run_prism3d.bat
+          @'
+          ORIGINAL RELEASE: BoxedWine 26R1.0, danoon2/Boxedwine
+          This is a checksum-verified upstream Windows x64 console/SDL binary,
+          not code compiled from the current EmuWasm repository.
+          License: GPL-2.0-or-later.
+          Source and license information:
+          https://github.com/danoon2/Boxedwine/releases/tag/26R1.0
+          https://github.com/danoon2/Boxedwine
+
+          Double-click Boxedwine.exe to open the original emulator UI.
+          Download a COMPLETE compatible Wine/Linux filesystem using its UI.
+          Then double-click run_prism3d.bat in this directory.
+
+          The game must already be installed on the host computer.
+          Wine PE DLL files by themselves are not a complete filesystem.
+          DirectDraw/Direct3D/OpenGL compatibility for Prism3D is not guaranteed.
+          '@ | Set-Content windows-upstream/README-WINDOWS.txt -Encoding UTF8
+          Get-ChildItem windows-upstream | Select-Object Name, Length
+
+      - name: Upload verified native x64 Windows BoxedWine executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: boxedwine-26R1-upstream-windows-x64
+          path: windows-upstream/
+          if-no-files-found: error
