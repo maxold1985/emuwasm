@@ -12,6 +12,9 @@ on:
       - 'tests/pe32_loader.cpp'
       - 'include/emuwasm/pe32.h'
       - 'src/pe32.cpp'
+      - 'src/pe32_modules.cpp'
+      - 'include/emuwasm/pe32_modules.h'
+      - 'tests/pe32_modules.cpp'
 
 jobs:
   boxedwine-cpu:
@@ -71,7 +74,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          cmake --build build-x86 --target emuwasm_x86_execution emuwasm_pe32_execution emuwasm_pe32_import_execution emuwasm_pe32_parser_test --parallel 2 2>&1 | tee x86-link.log
+          cmake --build build-x86 --target emuwasm_x86_execution emuwasm_pe32_execution emuwasm_pe32_import_execution emuwasm_pe32_parser_test emuwasm_pe32_modules_test --parallel 2 2>&1 | tee x86-link.log
       - name: Upload x86 execution link diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -81,7 +84,7 @@ jobs:
           if-no-files-found: ignore
       - name: Run x86 instructions if link succeeded
         if: steps.x86_link.outcome == 'success'
-        run: ctest --test-dir build-x86 -R '^(boxedwine_x86_execution|boxedwine_pe32_execution|boxedwine_pe32_import_execution|pe32_parser)$' --output-on-failure
+        run: ctest --test-dir build-x86 -R '^(boxedwine_x86_execution|boxedwine_pe32_execution|boxedwine_pe32_import_execution|pe32_parser|pe32_modules)$' --output-on-failure
       - name: Trace interpreter crash with GDB
         if: failure() && steps.x86_link.outcome == 'success'
         shell: bash
