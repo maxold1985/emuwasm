@@ -37,7 +37,7 @@ jobs:
       - name: Install native SDL/Wine-host build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libsdl2-dev libcurl4-openssl-dev libgl-dev libssl-dev zlib1g-dev libminizip-dev
+          sudo apt-get install -y build-essential libsdl2-dev libcurl4-openssl-dev libgl-dev libglu1-mesa-dev libssl-dev zlib1g-dev libminizip-dev
       - name: Build ORIGINAL BoxedWine Linux runtime (full kernel, Wine guest interface, SDL)
         run: |
           make -C boxedwine-upstream/project/linux release JOBS=2
