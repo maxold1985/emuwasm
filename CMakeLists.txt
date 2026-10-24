@@ -13,7 +13,7 @@ add_library(emuwasm_probe STATIC src/probe.cpp)
 target_include_directories(emuwasm_probe PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 # Portable PE32 parser/relocator: does not depend on BoxedWine or Wine.
-add_library(emuwasm_pe32 STATIC src/pe32.cpp)
+add_library(emuwasm_pe32 STATIC src/pe32.cpp src/pe32_modules.cpp)
 target_include_directories(emuwasm_pe32 PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 if(EMUWASM_BUILD_EXTRACTED)
@@ -205,4 +205,7 @@ if(NOT EMSCRIPTEN)
     add_executable(emuwasm_pe32_parser_test tests/pe32_loader.cpp)
     target_link_libraries(emuwasm_pe32_parser_test PRIVATE emuwasm_pe32)
     add_test(NAME pe32_parser COMMAND emuwasm_pe32_parser_test)
+    add_executable(emuwasm_pe32_modules_test tests/pe32_modules.cpp)
+    target_link_libraries(emuwasm_pe32_modules_test PRIVATE emuwasm_pe32)
+    add_test(NAME pe32_modules COMMAND emuwasm_pe32_modules_test)
 endif()
