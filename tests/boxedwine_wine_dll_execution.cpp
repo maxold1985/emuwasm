@@ -3,6 +3,7 @@
 // x86 guest code; no actual Windows API is implemented by this test.
 #include "boxedwine.h"
 #include "emuwasm/pe32_wine.h"
+#include "emuwasm/pe32_boxedwine.h"
 #include "pe32_fixture.h"
 
 #include <chrono>
@@ -21,36 +22,6 @@ void save(const std::filesystem::path& path,
               static_cast<std::streamsize>(bytes.size()));
 }
 
-bool mapGuestImage(KThread* thread, const emuwasm::pe32::Image& image) {
-    const U32 base = image.loadBase;
-    if (thread->memory->mmap(
-            thread, base, static_cast<U32>(image.bytes.size()),
-            K_PROT_READ | K_PROT_WRITE,
-            K_MAP_PRIVATE | K_MAP_ANONYMOUS | K_MAP_FIXED,
-            static_cast<FD>(-1), 0) != base)
-        return false;
-    thread->memory->memcpy(base, image.bytes.data(),
-                           static_cast<U32>(image.bytes.size()));
-
-    // Keep image headers read-only, then apply per-section page permissions.
-    if (thread->memory->mprotect(thread, base, K_PAGE_SIZE, K_PROT_READ) != 0)
-        return false;
-    for (const auto& section : image.sections) {
-        U32 protection = 0;
-        if (section.characteristics & 0x40000000u) protection |= K_PROT_READ;
-        if (section.characteristics & 0x80000000u) protection |= K_PROT_WRITE;
-        if (section.characteristics & 0x20000000u) protection |= K_PROT_EXEC;
-        if (!protection) continue;
-        const U32 sectionBytes = (section.virtualSize > section.rawSize)
-                               ? section.virtualSize : section.rawSize;
-        const U32 alignedBytes = (sectionBytes + K_PAGE_SIZE - 1) &
-                                 ~(K_PAGE_SIZE - 1);
-        if (thread->memory->mprotect(
-                thread, base + section.rva, alignedBytes, protection) != 0)
-            return false;
-    }
-    return true;
-}
 } // namespace
 
 int main() {
@@ -90,10 +61,10 @@ int main() {
     if (!thread || !thread->cpu || !thread->memory) return 6;
     KThread::setCurrentThread(thread);
 
-    if (!mapGuestImage(thread, exe) ||
-        !mapGuestImage(thread, *kernel) ||
-        !mapGuestImage(thread, *ntdll)) {
-        std::fprintf(stderr, "Failed to map PE images into BoxedWine guest MMU\n");
+    if (!emuwasm::pe32::mapLinkedWineImages(
+            thread, exe, wine.modules(), error)) {
+        std::fprintf(stderr, "Failed to map PE images into BoxedWine guest MMU: %s\\n",
+                     error.c_str());
         return 7;
     }
 
