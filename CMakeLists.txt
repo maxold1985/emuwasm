@@ -165,9 +165,22 @@ if(EMUWASM_BUILD_EXTRACTED)
             emuwasm_boxedwine_util emuwasm_boxedwine_io
             emuwasm_boxedwine_platform emuwasm_boxedwine_display emuwasm_softfloat
             "-Wl,--end-group")
+        # Resolve one PE32 import to a guest stub and execute CALL [IAT].
+        add_executable(emuwasm_pe32_import_execution tests/boxedwine_pe32_import_execution.cpp)
+        target_compile_features(emuwasm_pe32_import_execution PRIVATE cxx_std_20)
+        target_include_directories(emuwasm_pe32_import_execution PRIVATE
+            $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
+        target_link_libraries(emuwasm_pe32_import_execution PRIVATE
+            emuwasm_pe32
+            "-Wl,--start-group"
+            emuwasm_boxedwine emuwasm_boxedwine_kernel
+            emuwasm_boxedwine_util emuwasm_boxedwine_io
+            emuwasm_boxedwine_platform emuwasm_boxedwine_display emuwasm_softfloat
+            "-Wl,--end-group")
         if(NOT EMSCRIPTEN)
             add_test(NAME boxedwine_x86_execution COMMAND emuwasm_x86_execution)
             add_test(NAME boxedwine_pe32_execution COMMAND emuwasm_pe32_execution)
+            add_test(NAME boxedwine_pe32_import_execution COMMAND emuwasm_pe32_import_execution)
         endif()
     endif()
 
