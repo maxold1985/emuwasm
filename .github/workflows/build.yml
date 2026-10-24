@@ -24,3 +24,23 @@ jobs:
         run: emcmake cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build build-wasm --parallel 2
+      - name: Verify runnable WebAssembly CLI
+        run: |
+          test -s build-wasm/emuwasm_pe32_inspect.js
+          test -s build-wasm/emuwasm_pe32_inspect.wasm
+          test -s build-wasm/emuwasm_wine_link.js
+          test -s build-wasm/emuwasm_wine_link.wasm
+          node build-wasm/emuwasm_wine_link.js --help
+      - name: Package WebAssembly executables
+        run: |
+          mkdir -p dist-wasm
+          cp build-wasm/emuwasm_pe32_inspect.js build-wasm/emuwasm_pe32_inspect.wasm dist-wasm/
+          cp build-wasm/emuwasm_wine_link.js build-wasm/emuwasm_wine_link.wasm dist-wasm/
+          cp WASM-README.md dist-wasm/README.md
+      - name: Publish downloadable WebAssembly package
+        uses: actions/upload-artifact@v4
+        with:
+          name: emuwasm-wasm-node
+          path: dist-wasm/
+          if-no-files-found: error
+          retention-days: 30
