@@ -1,0 +1,92 @@
+name: Full BoxedWine Windows x64 runtime
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/boxedwine-windows.yml'
+      - 'scripts/run_boxedwine_game_windows.ps1'
+
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout BoxedWine source
+        uses: actions/checkout@v4
+        with:
+          repository: danoon2/Boxedwine
+          ref: master
+          path: boxedwine-upstream
+          persist-credentials: false
+
+      - name: Detect MSBuild and Windows C++ compiler
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build full upstream Windows x64 emulator with available toolset
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sln = 'boxedwine-upstream/project/msvc/BoxedWine/BoxedWine.sln'
+          # Upstream's newer .vcxproj files request v145 (VS 2026).
+          # Use VS 2022 v143 provided by windows-latest without modifying upstream files.
+          & msbuild $sln /t:Build /m:2 /nologo /v:minimal '/p:Configuration=Release' '/p:Platform=x64' '/p:PlatformToolset=v143' /p:WindowsTargetPlatformVersion=10.0 /p:BoxedwineStandaloneRuntime=false
+          if ($LASTEXITCODE -ne 0) { throw "Windows BoxedWine build failed: $LASTEXITCODE" }
+
+      - name: Stage executable and native dependencies
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = 'boxedwine-upstream/project/msvc/BoxedWine/x64/Release'
+          if (-not (Test-Path "$source/Boxedwine.exe" -PathType Leaf)) {
+            Get-ChildItem boxedwine-upstream/project/msvc/BoxedWine -Recurse -Filter '*.exe' | Select-Object -ExpandProperty FullName
+            throw 'The Boxedwine.exe output was not found.'
+          }
+          New-Item -ItemType Directory -Force -Path 'windows-package' | Out-Null
+          Copy-Item "$source/Boxedwine.exe" -Destination 'windows-package/Boxedwine.exe'
+          Get-ChildItem $source -Filter '*.dll' -File | Copy-Item -Destination 'windows-package'
+          if (-not (Test-Path 'windows-package/SDL2.dll')) {
+            Write-Warning 'SDL2.dll was not in the release output folder; checking SDL2 build output.'
+            Get-ChildItem boxedwine-upstream/lib/sdl2/VisualC -Recurse -Filter 'SDL2.dll' -File | Select-Object -First 1 | ForEach-Object {
+              Copy-Item $_.FullName -Destination 'windows-package/SDL2.dll'
+            }
+          }
+          # Verify the correct PE machine type: AMD64 == 0x8664.
+          $binary = [IO.File]::ReadAllBytes((Resolve-Path 'windows-package/Boxedwine.exe'))
+          if ($binary.Length -lt 1024 -or [BitConverter]::ToUInt16($binary, 0) -ne 0x5a4d) { throw 'Not a valid PE executable' }
+          $peOffset = [BitConverter]::ToInt32($binary, 0x3c)
+          if ($peOffset -lt 0 -or $peOffset + 6 -gt $binary.Length) { throw 'Invalid PE signature offset' }
+          if ([BitConverter]::ToUInt32($binary, $peOffset) -ne 0x4550) { throw 'Missing PE signature' }
+          $machine = [BitConverter]::ToUInt16($binary, $peOffset + 4)
+          if ($machine -ne 0x8664) { throw ('Not an AMD64 executable: 0x{0:X4}' -f $machine) }
+          Write-Host 'Verified PE32+ x64 Windows executable'
+          Get-ChildItem windows-package | Select-Object Name, Length
+
+      - name: Copy Windows Prism3D launcher
+        uses: actions/checkout@v4
+        with:
+          path: emuwasm
+          persist-credentials: false
+
+      - name: Add script and README to ZIP
+        run: |
+          Copy-Item emuwasm/scripts/run_boxedwine_game_windows.ps1 -Destination windows-package/run_prism3d.ps1
+          @'
+          Windows x64 BoxedWine runtime, compiled from danoon2/Boxedwine.
+          Launch Boxedwine.exe directly to open its user interface and download a complete Wine filesystem.
+          To test Prism3D: right-click run_prism3d.ps1 > Run with PowerShell,
+          or open a PowerShell terminal and run:
+             powershell -ExecutionPolicy Bypass -File .\run_prism3d.ps1
+          A full BoxedWine Wine Linux filesystem is required. A folder containing
+          only Wine PE DLLs (i386-windows) will not work.
+          The Windows emulator supports OpenGL/SDL graphics; game compatibility is unverified.
+          BoxedWine is released under the GPL; read its upstream license before distribution.
+          '@ | Set-Content -Path windows-package/README-WINDOWS.txt -Encoding UTF8
+
+      - name: Upload runnable BoxedWine Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: boxedwine-full-runtime-windows-x64
+          path: windows-package/
+          if-no-files-found: error
