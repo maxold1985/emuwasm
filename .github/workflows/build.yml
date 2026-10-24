@@ -93,3 +93,47 @@ jobs:
           path: dist-windows/
           if-no-files-found: error
           retention-days: 30
+
+  wine-pe32:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable Ubuntu i386 architecture and install Wine PE packages
+        shell: bash
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wine32:i386 libwine:i386
+      - name: Locate real Wine PE32 DLLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for root in /usr/lib/i386-linux-gnu/wine/i386-windows /usr/lib/wine/i386-windows; do
+            if [ -d "$root" ]; then
+              echo "WINE_PE_ROOT=$root" >> "$GITHUB_ENV"
+              ls -l "$root"/wsock32.dll "$root"/winmm.dll "$root"/ddraw.dll
+              exit 0
+            fi
+          done
+          echo "Wine i386-windows directory not found" >&2
+          exit 1
+      - name: Collect verified PE32 DLLs
+        shell: bash
+        run: |
+          python3 scripts/collect_wine_dlls.py --source "$WINE_PE_ROOT" --output dist-wine --origin "Ubuntu 24.04 libwine:i386" --min-dlls 6
+          python3 - <<'PY'
+          from pathlib import Path
+          required = ("wsock32.dll", "winmm.dll", "ddraw.dll", "kernel32.dll", "user32.dll", "ole32.dll", "ntdll.dll")
+          base = Path("dist-wine/wine/i386-windows")
+          missing = [name for name in required if not (base / name).is_file()]
+          if missing:
+              raise SystemExit("Missing required Wine PE32 DLLs: " + ", ".join(missing))
+          print("Verified required Prism3D Wine DLLs:", ", ".join(required))
+          PY
+      - name: Upload Wine i386 PE32 DLL bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: emuwasm-wine-i386-pe32
+          path: dist-wine/
+          if-no-files-found: error
+          retention-days: 30
