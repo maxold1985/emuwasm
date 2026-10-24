@@ -126,6 +126,25 @@ int main() {
           !actualCycle.resolve(request, address),
           "reject circular DLL export forwarders");
 
+    // PE permits multiple names to alias the same EAT index.
+    auto aliases = kernelFile;
+    emuwasm::test::put32(aliases, 0x418, 2); // NumberOfNames
+    emuwasm::test::put32(aliases, 0x454, 0x20a0); // second name RVA
+    emuwasm::test::put16(aliases, 0x462, 0);      // same EAT index 0
+    constexpr char aliasName[] = "GetTickCountAlias";
+    for (std::size_t i = 0; i < sizeof(aliasName); ++i)
+        aliases[0x4a0 + i] = static_cast<std::uint8_t>(aliasName[i]);
+    check(load(aliases, 0x700000, kernel, error, true) &&
+          kernel.exports.size() == 3,
+          "retain two export names for one EAT slot");
+    ModuleRegistry aliased;
+    check(aliased.addDll("kernel32.dll", kernel, error),
+          "register DLL with aliased export");
+    request.name = "GetTickCountAlias";
+    check(aliased.resolve(request, address) && address == 0x701000,
+          "resolve second export alias to same guest address");
+    request.name = "GetTickCount";
+
     auto malformed = kernelFile;
     emuwasm::test::put32(malformed, 0x41c, 0xfffffff0);
     check(!load(malformed, 0x700000, kernel, error, true),
