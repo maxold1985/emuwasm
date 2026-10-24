@@ -95,6 +95,36 @@ exception handling and proper Win32 process startup. Real Wine binaries
 have **not yet been validated in CI**; current tests use deterministic
 on-disk PE32 DLL fixtures. Unsupported PE features fail explicitly.
 
+## Windows 10 x64: executable nativo (sem WSL)
+
+O executavel `boxedwine` publicado pelo workflow Linux **nao roda no Windows**.
+E os arquivos `.wasm` e `.js` so executam no navegador, servidos por HTTP(S).
+
+Para Windows 10 x64, use [Full BoxedWine Windows x64 runtime](.github/workflows/boxedwine-windows.yml),
+que compila o BoxedWine original como um EXE PE32+ AMD64 e empacota as DLLs.
+A compilacao no GitHub Actions precisa concluir com sucesso antes de baixar
+o artifact `boxedwine-full-runtime-windows-x64`.
+
+1. Extraia **todos os arquivos** do artifact na mesma pasta.
+2. Execute `Boxedwine.exe` para abrir o gerenciador grafico e obter o
+   filesystem Linux/Wine completo do BoxedWine, se ainda nao o tiver.
+3. Use `run_prism3d.bat` para iniciar o jogo instalado em
+   `C:\GOG Games\18 Wheels of Steel Pedal to the Metal`.
+4. Caso tenha instalado o jogo em outro diretorio, no PowerShell:
+
+~~~powershell
+powershell -ExecutionPolicy Bypass -File .\run_prism3d.ps1 -GameDirectory "D:\Jogos\18 Wheels of Steel" -WineRootZip "C:\caminho\Wine.zip"
+~~~
+
+O script monta a instalacao no drive D: convidado usando `-mount_drive`,
+cria um perfil em %LOCALAPPDATA%/EmuWasm/Prism3D e executa
+`/bin/wine D:\prism3d.exe`. Nao copie apenas as DLLs PE32 do Wine:
+o sistema de arquivos completo contem tambem o Wine/Linux convidado.
+
+O backend grafico e o SDL/OpenGL do BoxedWine original, **nao** um conversor
+DirectX 11 para WebGPU. O sucesso da compilacao do EXE nao comprova que
+o jogo Prism3D chegara ao menu principal ou desenhara 3D corretamente.
+
 ## Running a real Windows game through the complete BoxedWine Wine runtime
 
 **Recommended runtime path.** Original [BoxedWine](https://github.com/danoon2/Boxedwine)
