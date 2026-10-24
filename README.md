@@ -29,10 +29,10 @@ Experimental Windows x86 emulation project targeting WebAssembly and WebGPU.
 
 ## What does not work yet
 
-- Actual Wine/Windows DLL implementations (`ntdll.dll`, `kernel32.dll`,
-  etc.). PE DLL exports can be parsed and linked, but Windows APIs are
-  **not implemented**; importing a function does not make it callable unless
-  its guest code and runtime dependencies work.
+- Executing actual Wine DLL implementations (`ntdll.dll`, `kernel32.dll`,
+  etc.). Real Wine PE DLLs can now be loaded from disk and their imports
+  linked, but their Windows/Unix runtime dependencies are **not implemented**.
+  Import binding alone does not make a Windows API callable.
 - Windows process environment (PEB/TEB), SEH, TLS, Windows system calls and
   startup conventions.
 - Executing an arbitrary Windows `.exe` or Direct3D 11 game in the browser.
@@ -40,6 +40,44 @@ Experimental Windows x86 emulation project targeting WebAssembly and WebGPU.
 
 The PE32 parser accepts import tables but **never executes Windows APIs
 implicitly**. Missing DLL exports are rejected by the binding step.
+
+## Connect genuine Wine PE32 DLL files (linking only)
+
+The `emuwasm_wine_link` tool loads **real on-disk Wine 32-bit PE DLL
+files**, recursively follows their import dependencies, maps them into
+separate guest virtual ranges, applies HIGHLOW base relocations and patches
+the EXE and DLL import tables using their actual exported guest addresses.
+It handles named, ordinal and forwarded exports and rejects missing modules
+or exports with a diagnostic.
+
+Use **Wine's `i386-windows` PE DLL directory**, not Wine's `i386-unix`
+shared libraries, and not Microsoft's Windows system DLLs:
+
+```sh
+cmake -S . -B build
+cmake --build build --target emuwasm_wine_link
+
+./build/emuwasm_wine_link \\
+  --wine-dir /usr/lib/i386-linux-gnu/wine/i386-windows \\
+  path/to/program.exe
+```
+
+On Windows with Visual Studio 2022, extract Wine's **32-bit PE DLL files**
+to a local directory, then run:
+
+```bat
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release --target emuwasm_wine_link
+build\\Release\\emuwasm_wine_link.exe --wine-dir "D:\\wine\\i386-windows" "D:\\apps\\program.exe"
+```
+
+The DLL search is case-insensitive, supports multiple `--wine-dir` options
+and does not call native Windows `LoadLibrary`. This loader does **not**
+execute the EXE or DLLs: Wine PE exports may require its Unix-side libraries,
+PEB/TEB, loader lists, syscall dispatch, TLS, initialization, API sets,
+exception handling and proper Win32 process startup. Real Wine binaries
+have **not yet been validated in CI**; current tests use deterministic
+on-disk PE32 DLL fixtures. Unsupported PE features fail explicitly.
 
 ## Wine and BoxedWine integration plan
 
@@ -55,11 +93,11 @@ host ABI, module loading and Windows/Unix boundary.
 
 Next milestones:
 
-1. Add a recursive on-disk DLL dependency loader, guest page protection
-   mapping and support for real Wine PE module images.
+1. Validate the loader against real Wine i386-windows DLL binaries and
+   map all DLL sections into BoxedWine's soft-MMU with correct page protections.
 2. Establish Windows PEB/TEB, loader lists, TLS, stack and process startup.
-3. Implement/adapt the Windows API and Wine Unix/Windows ABI boundary.
-4. Add Win32 API coverage and a Direct3D-to-WebGPU graphics backend.
+3. Adapt Wine's Unix/Windows ABI boundary and syscall dispatch for BoxedWine.
+4. Add Direct3D 11-to-WebGPU graphics translation.
 
 ## Build
 
