@@ -44,6 +44,8 @@ private:
 
     bool loadDllRecursive(const std::string& filename,
                           std::string& error, unsigned depth);
+    bool ensureForwarder(const Import& imported, std::string& error,
+                         unsigned depth);
     bool findDllPath(const std::string& filename,
                      std::filesystem::path& path) const;
     bool available(std::uint64_t start, std::uint64_t length) const;
