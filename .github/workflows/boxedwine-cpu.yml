@@ -23,8 +23,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -d boxedwine-upstream/source/emulation/cpu
-          test -d boxedwine-upstream/source/emulation/softmmu
+          echo "Upstream checkout:"
+          ls -la boxedwine-upstream/source/emulation || true
+          for required in source/emulation/cpu source/emulation/softmmu source/kernel source/util source/io; do
+            if [ ! -d "boxedwine-upstream/$required" ]; then
+              echo "::error::Missing upstream directory: $required"
+              exit 1
+            fi
+          done
           mkdir -p engine
           cp -a boxedwine-upstream/source/emulation engine/
           cp -a boxedwine-upstream/source/kernel engine/
@@ -32,8 +38,12 @@ jobs:
           cp -a boxedwine-upstream/source/io engine/
           # Original soft-MMU headers use ../../source/util/... relative to engine/emulation.
           # Keep the original source/ hierarchy alongside the staged engine/ tree.
-          ln -s ../boxedwine-upstream/source source
-          test -f source/util/bnativeheap.h
+          ln -s boxedwine-upstream/source source
+          if [ ! -f source/util/bnativeheap.h ]; then
+            echo "::error::Missing source/util/bnativeheap.h after staging"
+            ls -la source/util | head -40
+            exit 1
+          fi
           echo "Original BoxedWine source trees staged under engine/"
       - name: Stage upstream SoftFloat C sources
         shell: bash
