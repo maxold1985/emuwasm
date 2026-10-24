@@ -33,7 +33,13 @@ if(EMSCRIPTEN)
         target_link_options(${wasm_cli} PRIVATE
             "-sENVIRONMENT=node"
             "-sNODERAWFS=1"
-            "-sEXIT_RUNTIME=1")
+            "-sEXIT_RUNTIME=1"
+            # Wine DLL dependency trees may require hundreds of MiB of
+            # transient image buffers; the default fixed WASM heap OOMs.
+            "-sALLOW_MEMORY_GROWTH=1"
+            "-sINITIAL_MEMORY=268435456"
+            "-sMAXIMUM_MEMORY=2147483648"
+            "-sABORTING_MALLOC=1")
     endforeach()
 endif()
 
