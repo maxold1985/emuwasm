@@ -24,6 +24,19 @@ target_link_libraries(emuwasm_pe32_inspect PRIVATE emuwasm_pe32)
 add_executable(emuwasm_wine_link tools/wine_link.cpp)
 target_link_libraries(emuwasm_wine_link PRIVATE emuwasm_pe32)
 
+# The WASM command-line tools run under Node.js. NODERAWFS forwards
+# std::filesystem/ifstream calls to the host filesystem, so --wine-dir and
+# PE32 paths work on Windows/Linux without packaging input files into WASM.
+# They are PE inspectors/linkers, NOT a full BoxedWine/Wine runtime.
+if(EMSCRIPTEN)
+    foreach(wasm_cli IN ITEMS emuwasm_pe32_inspect emuwasm_wine_link)
+        target_link_options(${wasm_cli} PRIVATE
+            "-sENVIRONMENT=node"
+            "-sNODERAWFS=1"
+            "-sEXIT_RUNTIME=1")
+    endforeach()
+endif()
+
 if(EMUWASM_BUILD_EXTRACTED)
     file(GLOB_RECURSE BOXEDWINE_CPU CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/engine/emulation/cpu/common/*.cpp"
