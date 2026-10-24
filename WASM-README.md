@@ -22,10 +22,18 @@ Inspecionar um arquivo PE32:
 node emuwasm_pe32_inspect.js "C:\caminho\programa.exe"
 ```
 
-Carregar DLLs PE32 do Wine e verificar imports:
+Carregar as DLLs do Wine incluídas no pacote `emuwasm-wasm-with-wine`:
 
 ```bat
-node emuwasm_wine_link.js --wine-dir "C:\wine\i386-windows" "C:\caminho\programa.exe"
+node emuwasm_wine_link.js "C:\\caminho\\programa.exe"
+```
+
+Execute esse comando na pasta do aplicativo, onde fica
+`wine/i386-windows`. O carregador encontra as DLLs automaticamente.
+Para utilizar uma pasta externa de DLLs:
+
+```bat
+node emuwasm_wine_link.js --wine-dir "C:\\wine\\i386-windows" "C:\\caminho\\programa.exe"
 ```
 
 Exibir a ajuda do vinculador:
@@ -34,7 +42,11 @@ Exibir a ajuda do vinculador:
 node emuwasm_wine_link.js --help
 ```
 
-Use a pasta `i386-windows` com as DLLs PE32 **32 bits** do Wine.
+O workflow `wine-bundle.yml` compila DLLs PE32 i386 a partir do
+código-fonte Wine 10.0 e publica um ZIP com a pasta
+`wine/i386-windows`. O arquivo `wine/manifest.json` contém a
+origem, os nomes e hashes SHA-256 das DLLs.
+O pacote antigo `emuwasm-wasm-node` não contém essas DLLs.
 O suporte a `--wine-dir` utiliza o filesystem local do Node.js
 (Emscripten NODERAWFS), não o filesystem de um navegador.
 
