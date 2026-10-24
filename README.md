@@ -1,7 +1,7 @@
 # EmuWasm
 
 Experimental Windows x86 emulation project targeting WebAssembly and WebGPU.
-**This is not yet a Windows application runtime or a browser game launcher.**
+**The standalone EmuWasm C++ PE32/CPU loader is not yet a complete Windows runtime.** The separate [browser port](browser_port/) integrates the already implemented upstream BoxedWine WASM runtime as an experimental browser game launcher, not as a completed native rewrite of any commercial game.
 
 ## What actually works
 
