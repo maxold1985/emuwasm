@@ -10,6 +10,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: Fetch original BoxedWine sources
+        run: |
+          git clone --depth 1 https://github.com/danoon2/Boxedwine.git boxedwine-upstream
+          test -d boxedwine-upstream/source/emulation/cpu
+          test -d boxedwine-upstream/source/emulation/softmmu
+          mkdir -p engine
+          cp -a boxedwine-upstream/source/emulation engine/
+          cp -a boxedwine-upstream/source/kernel engine/
+          cp -a boxedwine-upstream/source/util engine/
+          cp -a boxedwine-upstream/source/io engine/
+          echo "Original BoxedWine source trees staged under engine/"
       - name: Install original BoxedWine runtime dependencies
         run: |
           sudo apt-get update
