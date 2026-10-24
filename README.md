@@ -95,6 +95,83 @@ exception handling and proper Win32 process startup. Real Wine binaries
 have **not yet been validated in CI**; current tests use deterministic
 on-disk PE32 DLL fixtures. Unsupported PE features fail explicitly.
 
+## Running a real Windows game through the complete BoxedWine Wine runtime
+
+**Recommended runtime path.** Original [BoxedWine](https://github.com/danoon2/Boxedwine)
+already emulates Linux i386 running Wine, including CPU, filesystem,
+graphics and sound services. This is substantially more complete than trying
+to execute the PE export addresses in genuine kernel32.dll directly through
+the standalone PE32 linker.
+
+The [Full BoxedWine runtime workflow](.github/workflows/boxedwine-full-runtime.yml)
+compiles unmodified upstream BoxedWine for Linux (WSL2 compatible).
+Choose **Run workflow** and set the optional build_wasm input to true to
+also compile its larger browser release. Download the relevant artifact after
+a successful run.
+
+### Linux/WSL2: try the original full Wine runtime
+
+You need (1) your installed game directory, (2) the
+'boxedwine-full-runtime-linux-x86_64' binary artifact, and (3) a complete
+compatible Linux/Wine filesystem ZIP downloaded using the BoxedWine
+filesystem manager, e.g. TinyCore15Wine11.0.zip. The existing
+'wine/i386-windows' folder of PE DLLs alone is insufficient.
+
+Run these commands inside WSL2 Ubuntu, substituting the actual paths
+to the BoxedWine binary and filesystem ZIP:
+
+~~~bash
+chmod +x ./boxedwine
+python3 scripts/run_boxedwine_game.py \
+  --boxedwine ./boxedwine \
+  --wine-root-zip /mnt/c/Users/max/Downloads/TinyCore15Wine11.0.zip \
+  --game-dir "/mnt/c/GOG Games/18 Wheels of Steel Pedal to the Metal" \
+  --exe prism3d.exe \
+  --profile ./boxedwine-game-profile \
+  --resolution 1024x768
+~~~
+
+Add --dry-run to validate paths and print the command without executing.
+BoxedWine's -mount maps the entire game installation into the emulated
+Linux filesystem, so Prism3D can access its assets. You need a working
+X11/WSLg display. A launched Wine process is not proof of game compatibility;
+inspect the SDL window, console output and Wine diagnostics.
+
+### Browser: package your original game files
+
+After setting build_wasm=true and downloading the browser artifact, put
+all its files in a web directory. Also put a compatible BoxedWine
+Linux/Wine root filesystem ZIP named boxedwine.zip there. This is NOT
+the i386-windows PE DLL directory from the import-linking test.
+
+From Windows PowerShell:
+
+~~~powershell
+py -3 scripts/package_boxedwine_game.py 
+    --game-dir "C:\GOG Games\18 Wheels of Steel Pedal to the Metal" 
+    --exe prism3d.exe 
+    --output prism3d.zip
+~~~
+
+Copy prism3d.zip alongside boxedwine.html, boxedwine.js, boxedwine.wasm,
+the other web assets, and boxedwine.zip. Serve the directory from a local
+web server, then open:
+
+~~~text
+http://localhost:8000/boxedwine.html?app=prism3d&p=prism3d.exe
+~~~
+
+Do not open the page through file://. For multithreaded browser builds,
+set COOP/COEP headers; upstream project/emscripten/server.mjs supports them.
+Game files are never downloaded or included by this project's GitHub Actions.
+Keep game ZIP archives on a private local server to avoid unauthorized
+redistribution of copyrighted game assets.
+
+Original BoxedWine uses a WebGL graphics backend in the browser, which may
+not support all DirectDraw/Direct3D operations required by Prism3D.
+Browser compatibility, performance and reaching a playable game state are
+unverified. The emuwasm DX11-to-WebGPU backend is not implemented yet.
+
 ## Headless execution probe for real PE32 programs (Linux/WSL2)
 
 **Experimental:** `emuwasm_pe32_run` now advances genuine guest x86 instructions
