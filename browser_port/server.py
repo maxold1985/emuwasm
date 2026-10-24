@@ -103,12 +103,18 @@ class GameServer(ThreadingHTTPServer):
 class GameHandler(BaseHTTPRequestHandler):
     server: GameServer
 
+    def valid_host(self) -> bool:
+        # Avoid DNS rebinding to loopback: users must address the private server
+        # explicitly as 127.0.0.1 rather than as an attacker-controlled domain.
+        return self.headers.get("Host", "") == f"127.0.0.1:{self.server.server_port}"
+
     def common_headers(self) -> None:
         # Needed for newer upstream BoxedWine Emscripten/pthread builds.
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
         self.send_header("Cache-Control", "no-store")
 
     def reply_json(self, code: int, data: dict) -> None:
@@ -141,6 +147,9 @@ class GameHandler(BaseHTTPRequestHandler):
         return self.server.webroot.joinpath(*route.lstrip("/").split("/"))
 
     def do_GET(self) -> None:
+        if not self.valid_host():
+            self.reply_json(403, {"error": "Host nao autorizado; use 127.0.0.1"})
+            return
         route = self.parse_route()
         if route == "/api/status":
             archives = {}
@@ -171,6 +180,9 @@ class GameHandler(BaseHTTPRequestHandler):
             pass
 
     def do_POST(self) -> None:
+        if not self.valid_host():
+            self.reply_json(403, {"error": "Host nao autorizado; use 127.0.0.1"})
+            return
         route = self.parse_route()
         if not route.startswith("/api/upload/"):
             self.reply_json(404, {"error": "Rota desconhecida"})
