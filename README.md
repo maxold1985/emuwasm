@@ -32,6 +32,12 @@ Experimental Windows x86 emulation project targeting WebAssembly and WebGPU.
   guest section page protections. A separate CPU integration test executes
   an EXE -> kernel32 -> ntdll guest x86 call chain using **synthetic**
   PE DLL files written to disk.
+- A minimal Windows x86 process skeleton builds guest **TEB, PEB,
+  PEB_LDR_DATA, circular module lists and RTL_USER_PROCESS_PARAMETERS**
+  using the offsets in Wine's `winternl.h`. The BoxedWine adapter installs
+  the TEB as a genuine x86 **FS segment via KThread::setTLS/CPU::setSegment**.
+  An interpreter regression checks guest `mov eax, fs:[0x30]`, followed by
+  PEB.ImageBaseAddress, loader-list traversal and thread/process IDs.
 
 ## What does not work yet
 
@@ -39,8 +45,10 @@ Experimental Windows x86 emulation project targeting WebAssembly and WebGPU.
   etc.). Real Wine PE DLLs can now be loaded from disk and their imports
   linked, but their Windows/Unix runtime dependencies are **not implemented**.
   Import binding alone does not make a Windows API callable.
-- Windows process environment (PEB/TEB), SEH, TLS, Windows system calls and
-  startup conventions.
+- A **complete** Windows process environment: only a minimal PEB/TEB and
+  loader list are present. Wine's actual ntdll initialization, SEH, PE TLS
+  callbacks, process heap, API sets, Unix-call dispatch, Windows syscalls
+  and runtime startup conventions are not supported.
 - Executing an arbitrary Windows `.exe` or Direct3D 11 game in the browser.
 - A WebGPU translation backend.
 
@@ -103,7 +111,8 @@ Next milestones:
 
 1. Validate the loader against real Wine i386-windows DLL binaries and
    map all DLL sections into BoxedWine's soft-MMU with correct page protections.
-2. Establish Windows PEB/TEB, loader lists, TLS, stack and process startup.
+2. Complete Wine's Windows PEB/TEB process state, DLL initialization
+   and PE TLS. Current PEB/TEB/loader lists are a tested partial skeleton.
 3. Adapt Wine's Unix/Windows ABI boundary and syscall dispatch for BoxedWine.
 4. Add Direct3D 11-to-WebGPU graphics translation.
 
@@ -133,7 +142,9 @@ The original BoxedWine interpreter build is exercised by the
 [CPU source audit](.github/workflows/cpu-audit.yml) workflow, which checks
 out upstream sources and compiles the CPU/kernel/platform dependency graph.
 Its tests include `boxedwine_x86_execution`, `boxedwine_pe32_execution`,
-`boxedwine_pe32_import_execution`, `pe32_parser` and `pe32_modules`.
+`boxedwine_pe32_import_execution`, `boxedwine_wine_dll_execution`,
+`boxedwine_win32_fs_execution`, `pe32_parser`, `pe32_modules`,
+`pe32_wine` and `pe32_process`.
 
 ## Third-party licensing
 
