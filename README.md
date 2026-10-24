@@ -95,6 +95,43 @@ exception handling and proper Win32 process startup. Real Wine binaries
 have **not yet been validated in CI**; current tests use deterministic
 on-disk PE32 DLL fixtures. Unsupported PE features fail explicitly.
 
+## Headless execution probe for real PE32 programs (Linux/WSL2)
+
+**Experimental:** `emuwasm_pe32_run` now advances genuine guest x86 instructions
+from a supplied EXE using the original BoxedWine CPU, after mapping Wine PE
+DLLs and installing the project's minimal PEB/TEB/FS state. It stops **before
+the first DLL instruction** by default, since genuine Wine DLL initialization
+and its Unix-side ABI are not implemented. It **does not start a playable game**,
+open a window, or translate graphics to WebGPU.
+
+Build it on Linux/WSL2 with BoxedWine sources staged via the
+[BoxedWine CPU workflow](.github/workflows/boxedwine-cpu.yml); a passing workflow
+publishes the Linux executable in the `emuwasm-pe32-run-linux-x86_64` artifact.
+This target is **not part of the current Node.js WASM bundle**.
+
+To probe the same game files from a WSL2 terminal, after downloading the
+workflow's Linux executable to the current directory:
+
+```sh
+chmod +x ./emuwasm_pe32_run
+./emuwasm_pe32_run \
+  --no-game-dir \
+  --game-dir "/mnt/c/Users/max/Downloads/roblox_backup/prism3d-dll-test" \
+  --wine-dir "/mnt/c/Users/max/Downloads/roblox_backup/emuwasm-wasm-node/wine/i386-windows" \
+  --max-steps 10000 \
+  "/mnt/c/GOG Games/18 Wheels of Steel Pedal to the Metal/prism3d.exe"
+```
+
+`--trace` prints x86 EIP and registers for every step. Use
+`--allow-dll-steps` **only for debugging**, not for playing games:
+Wine's real DLL startup and Unix calls are missing and it may crash.
+An expected diagnostic result looks like `STOP: reached <dll> ...`
+or `STOP: --max-steps=... reached`; neither means the game launched.
+
+The CI test `boxedwine_pe32_runner_cli` uses self-generated PE32 images and
+checks that an actual x86 `CALL [IAT]` moves execution from the EXE to
+a mapped DLL boundary. No game executables are included in the repository.
+
 ## Wine and BoxedWine integration plan
 
 **BoxedWine remains the x86 interpreter and guest-memory engine.** Wine is the
