@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include <string>
 
 namespace emuwasm {
 namespace test {
@@ -133,6 +134,79 @@ inline std::vector<std::uint8_t> makePe32WithImports() {
     put32(b, 0x600, 0x1000);
     put32(b, 0x604, 12);
     put16(b, 0x608, 0x3002);
+    put16(b, 0x60a, 0);
+    return b;
+}
+
+// Synthetic PE32 DLL with two exports: a named function at ordinal 1,
+// and an ordinal-only function at ordinal 2. Optionally forward ordinal 1
+// to another DLL. The x86 code is guest code (mov eax,imm32; ret).
+inline std::vector<std::uint8_t> makePe32Dll(
+        const std::string& moduleName,
+        const std::string& exportName,
+        const std::string& forwarder = {}) {
+    if (moduleName.empty() || moduleName.size() >= 16 ||
+        exportName.empty() || exportName.size() >= 16 ||
+        forwarder.size() >= 48)
+        return {};
+
+    auto b = makePe32({0xb8, 10, 0, 0, 0, 0xc3});
+    b.resize(0x800, 0);
+    put16(b, 0x86, 3);               // .text, .edata, .reloc
+    put16(b, 0x96, 0x2102);           // IMAGE_FILE_DLL + executable + i386
+    put32(b, 0x98 + 16, 0);          // DLL without DllMain
+    put32(b, 0x98 + 28, 0x600000);   // preferred DLL base
+    put32(b, 0x98 + 56, 0x4000);     // 4 virtual pages
+    put32(b, 0x98 + 96, 0x2000);     // export directory RVA
+    put32(b, 0x98 + 96 + 4, 0xc0);   // export directory size
+    put32(b, 0x98 + 96 + 5 * 8, 0x3000);
+    put32(b, 0x98 + 96 + 5 * 8 + 4, 12);
+
+    // Change the old .reloc section into .edata.
+    constexpr std::size_t edata = 0x178 + 40;
+    for (unsigned i = 0; i < 8; ++i) b[edata + i] = 0;
+    b[edata] = '.'; b[edata+1] = 'e'; b[edata+2] = 'd';
+    b[edata+3] = 'a'; b[edata+4] = 't'; b[edata+5] = 'a';
+    put32(b, edata + 36, 0x40000040); // initialized read-only data
+
+    constexpr std::size_t reloc = edata + 40;
+    b[reloc] = '.'; b[reloc+1] = 'r'; b[reloc+2] = 'e';
+    b[reloc+3] = 'l'; b[reloc+4] = 'o'; b[reloc+5] = 'c';
+    put32(b, reloc + 8, 0x200);
+    put32(b, reloc + 12, 0x3000);
+    put32(b, reloc + 16, 0x200);
+    put32(b, reloc + 20, 0x600);
+    put32(b, reloc + 36, 0x42000040);
+
+    // IMAGE_EXPORT_DIRECTORY at file 0x400 / RVA 0x2000.
+    put32(b, 0x40c, 0x2070);         // Name RVA
+    put32(b, 0x410, 1);              // Base ordinal
+    put32(b, 0x414, 2);              // NumberOfFunctions
+    put32(b, 0x418, 1);              // NumberOfNames
+    put32(b, 0x41c, 0x2040);         // AddressOfFunctions
+    put32(b, 0x420, 0x2050);         // AddressOfNames
+    put32(b, 0x424, 0x2060);         // AddressOfNameOrdinals
+    put32(b, 0x440, forwarder.empty() ? 0x1000 : 0x2090);
+    put32(b, 0x444, 0x1010);         // ordinal 2 guest code
+    put32(b, 0x450, 0x2080);         // GetTickCount or RtlGetTickCount
+    put16(b, 0x460, 0);              // name maps to EAT[0]
+    for (std::size_t i = 0; i <= moduleName.size(); ++i)
+        b[0x470 + i] = i == moduleName.size() ? 0
+            : static_cast<std::uint8_t>(moduleName[i]);
+    for (std::size_t i = 0; i <= exportName.size(); ++i)
+        b[0x480 + i] = i == exportName.size() ? 0
+            : static_cast<std::uint8_t>(exportName[i]);
+    for (std::size_t i = 0; i <= forwarder.size(); ++i)
+        b[0x490 + i] = i == forwarder.size() ? 0
+            : static_cast<std::uint8_t>(forwarder[i]);
+
+    // Ordinal 2 returns 11; named ordinal 1 returns 10.
+    b[0x210] = 0xb8; b[0x211] = 11;
+    b[0x212] = 0; b[0x213] = 0; b[0x214] = 0;
+    b[0x215] = 0xc3;
+    put32(b, 0x600, 0x1000);         // relocation block, ABSOLUTE only
+    put32(b, 0x604, 12);
+    put16(b, 0x608, 0);
     put16(b, 0x60a, 0);
     return b;
 }
