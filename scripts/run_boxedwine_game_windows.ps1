@@ -81,7 +81,7 @@ if (-not $DryRun) {
 # Unlike linking Wine DLL exports only, /bin/wine executes Windows APIs.
 $guestExe = 'D:\' + $Exe.Replace('/', '\')
 $relativeDirectory = [IO.Path]::GetDirectoryName($Exe.Replace('/', '\'))
-$guestWorkingDir = if ($relativeDirectory) { 'D:\' + $relativeDirectory } else { 'D:\' }
+$guestWorkingDir = if ($relativeDirectory) { '/mnt/drive_d/' + $relativeDirectory.Replace('\', '/') } else { '/mnt/drive_d' }
 $arguments = @(
     '-root', [IO.Path]::GetFullPath($ProfileDirectory),
     '-zip', $wineZipPath,
