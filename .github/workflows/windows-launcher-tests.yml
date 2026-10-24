@@ -88,3 +88,6 @@ jobs:
           $stages = Get-Content -LiteralPath $launcherLogs[0].FullName -Raw
           if (-not $stages.Contains('Wine reg.exe completion confirmed: True') -or -not $stages.Contains('Stage: Prism3D launch requested') -or -not $stages.Contains('Stage: Prism3D emulator process returned 1')) { throw "The second stage was skipped: $stages" }
           if (-not (Get-Content -LiteralPath $gameLogs[0].FullName -Raw).Contains('[sys] startup')) { throw 'Game stub did not run after Wine setup' }
+          # The simulated game deliberately returns 1; the workflow test itself succeeded.
+          $global:LASTEXITCODE = 0
+          exit 0
