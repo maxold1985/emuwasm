@@ -47,13 +47,15 @@ struct Image {
     std::uint32_t sizeOfHeaders = 0;
     std::vector<std::uint8_t> bytes; // SizeOfImage, including zero-filled BSS
     std::vector<Section> sections;
+    std::vector<std::uint32_t> tlsCallbacks; // guest VAs; never invoked by linker
     std::vector<Import> imports;     // imports are parsed but not automatically resolved
 };
 
 // Parse a little-endian x86 PE32 executable and apply HIGHLOW relocations.
 // Imported DLL names, symbols, ordinals and IAT slots are discovered, but no
 // host Windows code is invoked and no Wine DLLs are loaded by this function.
-// Delay-load imports and TLS are not supported yet. Set allowDll=true for
+// TLS callbacks are parsed but NOT executed. Delay-load imports remain unsupported.
+// Set allowDll=true for
 // DLL images; ordinary EXEs must not be accepted as DLLs (or vice versa).
 bool load(const std::vector<std::uint8_t>& file,
           std::uint32_t requestedBase,
