@@ -147,10 +147,7 @@ the i386-windows PE DLL directory from the import-linking test.
 From Windows PowerShell:
 
 ~~~powershell
-py -3 scripts/package_boxedwine_game.py 
-    --game-dir "C:\GOG Games\18 Wheels of Steel Pedal to the Metal" 
-    --exe prism3d.exe 
-    --output prism3d.zip
+py -3 scripts/package_boxedwine_game.py --game-dir "C:\GOG Games\18 Wheels of Steel Pedal to the Metal" --exe prism3d.exe --output prism3d.zip
 ~~~
 
 Copy prism3d.zip alongside boxedwine.html, boxedwine.js, boxedwine.wasm,
