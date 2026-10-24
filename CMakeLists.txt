@@ -188,10 +188,24 @@ if(EMUWASM_BUILD_EXTRACTED)
             emuwasm_boxedwine_util emuwasm_boxedwine_io
             emuwasm_boxedwine_platform emuwasm_boxedwine_display emuwasm_softfloat
             "-Wl,--end-group")
+        # Load a PE32 EXE and two DLLs from disk, link their imports, then
+        # execute EXE -> kernel32 -> ntdll using the original BoxedWine CPU.
+        add_executable(emuwasm_boxedwine_wine_dll_execution tests/boxedwine_wine_dll_execution.cpp)
+        target_compile_features(emuwasm_boxedwine_wine_dll_execution PRIVATE cxx_std_20)
+        target_include_directories(emuwasm_boxedwine_wine_dll_execution PRIVATE
+            $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
+        target_link_libraries(emuwasm_boxedwine_wine_dll_execution PRIVATE
+            emuwasm_pe32
+            "-Wl,--start-group"
+            emuwasm_boxedwine emuwasm_boxedwine_kernel
+            emuwasm_boxedwine_util emuwasm_boxedwine_io
+            emuwasm_boxedwine_platform emuwasm_boxedwine_display emuwasm_softfloat
+            "-Wl,--end-group")
         if(NOT EMSCRIPTEN)
             add_test(NAME boxedwine_x86_execution COMMAND emuwasm_x86_execution)
             add_test(NAME boxedwine_pe32_execution COMMAND emuwasm_pe32_execution)
             add_test(NAME boxedwine_pe32_import_execution COMMAND emuwasm_pe32_import_execution)
+            add_test(NAME boxedwine_wine_dll_execution COMMAND emuwasm_boxedwine_wine_dll_execution)
         endif()
     endif()
 
