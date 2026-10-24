@@ -98,6 +98,16 @@ on-disk PE32 DLL fixtures. Unsupported PE features fail explicitly.
 ## Windows 10 x64: executable nativo (sem WSL)
 
 O executavel `boxedwine` publicado pelo workflow Linux **nao roda no Windows**.
+
+Para usar imediatamente um EXE Windows x64 verificado, o workflow
+[Windows BoxedWine 26R1 verified upstream package](.github/workflows/boxedwine-windows-upstream.yml)
+baixa a release oficial 26R1.0, verifica o SHA-256 informado pela API de
+releases do GitHub e inclui `Boxedwine.exe`, `run_prism3d.bat` e
+`run_prism3d.ps1` no artifact `boxedwine-26R1-upstream-windows-x64`.
+Esse pacote **usa binarios oficiais prontos**, nao substitui a compilacao do codigo-fonte
+no workflow `boxedwine-windows.yml`. Os arquivos de jogo e o filesystem Wine
+completo continuam sendo fornecidos separadamente.
+
 E os arquivos `.wasm` e `.js` so executam no navegador, servidos por HTTP(S).
 
 Para Windows 10 x64, use [Full BoxedWine Windows x64 runtime](.github/workflows/boxedwine-windows.yml),
