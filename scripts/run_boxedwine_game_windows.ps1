@@ -168,4 +168,22 @@ if ($null -ne $gameExitCode -and $gameExitCode -ne 0) {
     if (Test-Path -LiteralPath $runLog -PathType Leaf) {
         Write-Host "Ultimas 50 linhas do log $runLog" -ForegroundColor Yellow
         Get-Content -LiteralPath $runLog -Tail 50 | ForEach-Object { Write-Host $_ }
-        $errors = @(Select-String -LiteralPath $runLog -Pattern 
+        $patterns = @(
+            '\*\*\* ERROR \*\*\*',
+            'Unhandled exception',
+            'page fault',
+            'out of memory',
+            "Can't load library",
+            'err:module'
+        )
+        $errors = @(Select-String -LiteralPath $runLog -Pattern $patterns -ErrorAction SilentlyContinue)
+        if ($errors.Count -gt 0) {
+            Write-Host 'Possiveis causas relevantes:' -ForegroundColor Yellow
+            $errors | Select-Object -Last 15 | ForEach-Object { Write-Host $_.Line }
+        } else {
+            Write-Host 'Nenhum erro explicito encontrado no log. A parada apos memory pool nao prova falta de RAM.'
+        }
+    }
+    Write-Host 'Proximos testes: -WinXP; depois -NoSound; depois -Pentium3; -DebugWine gera rastreamento adicional.'
+    exit $gameExitCode
+}
