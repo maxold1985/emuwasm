@@ -36,6 +36,10 @@ jobs:
           cp -a boxedwine-upstream/source/kernel engine/
           cp -a boxedwine-upstream/source/util engine/
           cp -a boxedwine-upstream/source/io engine/
+          # kprocess.cpp includes ../x11/x11.h relative to engine/kernel.
+          # Stage the original X11 headers/sources alongside kernel.
+          test -f boxedwine-upstream/source/x11/x11.h
+          cp -a boxedwine-upstream/source/x11 engine/
           # Original soft-MMU headers use ../../source/util/... relative to engine/emulation.
           # Keep the original source/ hierarchy alongside the staged engine/ tree.
           ln -s boxedwine-upstream/source source
