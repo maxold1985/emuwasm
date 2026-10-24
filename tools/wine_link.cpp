@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
         if (arg == "--wine-dir" && i + 1 < argc) {
             directories.emplace_back(argv[++i]);
         } else if (arg == "--help" || arg == "-h") {
-            std::printf("Usage: emuwasm_wine_link --wine-dir PATH "
+            std::printf("Usage: emuwasm_wine_link [--wine-dir PATH] "
                         "[--wine-dir PATH2] file.exe\n");
             return 0;
         } else if (!arg.empty() && arg[0] != '-' && executable.empty()) {
@@ -29,10 +29,18 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
+    if (directories.empty()) {
+        // Look for the Wine PE32 DLLs bundled alongside the WASM launcher.
+        // A user-supplied --wine-dir always takes precedence.
+        const fs::path bundled = fs::current_path() / "wine" / "i386-windows";
+        if (fs::is_directory(bundled))
+            directories.push_back(bundled);
+    }
     if (executable.empty() || directories.empty()) {
         std::fprintf(stderr,
-            "Usage: emuwasm_wine_link --wine-dir PATH [--wine-dir PATH2] file.exe\n"
-            "PATH should contain Wine's 32-bit PE files (i386-windows).\n");
+            "Usage: emuwasm_wine_link [--wine-dir PATH] file.exe\\n"
+            "Run from the app folder containing wine/i386-windows, "
+            "or specify --wine-dir.\\n");
         return 2;
     }
 
