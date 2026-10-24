@@ -188,6 +188,12 @@ if(EMUWASM_BUILD_EXTRACTED)
             emuwasm_boxedwine_util emuwasm_boxedwine_io
             emuwasm_boxedwine_platform emuwasm_boxedwine_display emuwasm_softfloat
             "-Wl,--end-group")
+        # Reusable production adapter from PE image layout to BoxedWine soft-MMU.
+        add_library(emuwasm_pe32_boxedwine STATIC src/pe32_boxedwine.cpp)
+        target_compile_features(emuwasm_pe32_boxedwine PRIVATE cxx_std_20)
+        target_include_directories(emuwasm_pe32_boxedwine PRIVATE
+            $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
+        target_link_libraries(emuwasm_pe32_boxedwine PUBLIC emuwasm_pe32)
         # Load a PE32 EXE and two DLLs from disk, link their imports, then
         # execute EXE -> kernel32 -> ntdll using the original BoxedWine CPU.
         add_executable(emuwasm_boxedwine_wine_dll_execution tests/boxedwine_wine_dll_execution.cpp)
@@ -195,7 +201,7 @@ if(EMUWASM_BUILD_EXTRACTED)
         target_include_directories(emuwasm_boxedwine_wine_dll_execution PRIVATE
             $<TARGET_PROPERTY:emuwasm_boxedwine,INCLUDE_DIRECTORIES>)
         target_link_libraries(emuwasm_boxedwine_wine_dll_execution PRIVATE
-            emuwasm_pe32
+            emuwasm_pe32_boxedwine emuwasm_pe32
             "-Wl,--start-group"
             emuwasm_boxedwine emuwasm_boxedwine_kernel
             emuwasm_boxedwine_util emuwasm_boxedwine_io
