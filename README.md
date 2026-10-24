@@ -207,6 +207,42 @@ Linux filesystem, so Prism3D can access its assets. You need a working
 X11/WSLg display. A launched Wine process is not proof of game compatibility;
 inspect the SDL window, console output and Wine diagnostics.
 
+### Browser port: 18 Wheels of Steel launcher (WASM + WebGL)
+
+O projeto inclui agora [`browser_port/`](browser_port) com uma pagina em
+portugues, servidor HTTP privado em Python 3, carregamento dos seus
+arquivos ZIP pela propria pagina, selecao de renderizador do Wine e
+o runtime integral do BoxedWine WebAssembly. Nao e um port nativo do
+motor Prism3D e nao inclui arquivos proprietarios do jogo.
+
+1. Acesse o workflow
+   [`18 Wheels of Steel browser port`](.github/workflows/18wos-browser-port.yml)
+   e baixe o artifact `emuwasm-18wos-browser-webgl-wasm` apos a CI passar.
+2. Extraia o ZIP e execute `start_windows.bat` no Windows 10 (Python 3).
+   O servidor abre apenas em `http://127.0.0.1:8000/`.
+3. Na pagina web, importe um ZIP completo do Wine/BoxedWine, por exemplo
+   o `TinyCore15Wine11.0.zip` que voce ja baixou.
+4. Gere **localmente** o ZIP com os arquivos originais do jogo:
+
+   ```powershell
+   py -3 package_boxedwine_game.py --game-dir "C:\GOG Games\18 Wheels of Steel Pedal to the Metal" --exe prism3d.exe --output prism3d.zip
+   ```
+
+5. Importe `prism3d.zip` pelo navegador e clique em **Iniciar 18 Wheels
+   of Steel**. Por padrao, a configuracao aplica Wine Windows XP,
+   OpenGL/WebGL, 1024x768 e audio desativado.
+
+Os ZIPs ficam em `.local-game-data/` e nunca sao publicados pelo Actions.
+O servidor inclui COOP/COEP e verifica os caminhos internos dos ZIPs
+antes de servi-los. O perfil do Wine no navegador e separado e
+persistido via IndexedDB, conforme o suporte do BoxedWine.
+
+**Limitacao:** nenhuma imagem 3D renderizada do jogo real foi validada.
+O log mais recente de Windows foi ate `Showing Window` e terminou com
+`Vulkan not compiled into Boxedwine`. A interface browser evita selecionar
+Vulkan e oferece OpenGL/WebGL ou GDI para diagnostico, mas o upstream
+pode ainda falhar ao criar os dispositivos DirectDraw/Direct3D.
+
 ### Browser: package your original game files
 
 After setting build_wasm=true and downloading the browser artifact, put
