@@ -1,7 +1,7 @@
 # EmuWasm — executáveis WebAssembly para Node.js
 
 Este pacote contém dois programas WebAssembly compilados a partir do C++
-do projeto. **Não é um emulador completo de jogos Windows** e não
+do projeto. Os arquivos JavaScript distribuídos são **formatados com recuo e\nquebras de linha pelo Prettier**, facilitando a leitura; são código gerado\npelo Emscripten, não o código-fonte original do emulador. **Não é um emulador completo de jogos Windows** e não
 executa APIs do Wine nem DirectX.
 
 ## Requisitos
