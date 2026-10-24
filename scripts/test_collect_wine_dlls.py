@@ -45,7 +45,7 @@ class WinePe32ValidationTests(unittest.TestCase):
     def test_reject_elf(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "ntdll.dll"
-            path.write_bytes(b"\\x7fELF" + bytes(508))
+            path.write_bytes(bytes((0x7F, 0x45, 0x4C, 0x46)) + bytes(508))
             self.assertFalse(module.is_pe32_x86(path))
 
 
