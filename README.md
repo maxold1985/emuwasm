@@ -17,15 +17,22 @@ Experimental Windows x86 emulation project targeting WebAssembly and WebGPU.
 - PE32 import descriptors, named exports and ordinal imports are parsed into
   a symbol list. A guest-address callback binds the IAT transactionally;
   unresolved imports produce an explicit error without partial IAT writes.
-- A second BoxedWine fixture executes an indirect x86 `CALL [IAT]` into a
-  **synthetic guest function stub**, returning through a real guest stack.
-  This tests import call mechanics, **not** the Windows API implementation.
+- The PE32 loader now accepts **DLL images**, parses their export address
+  tables (named and ordinal exports) and detects forwarded exports.
+- A guest DLL registry resolves imports by module name (case-insensitive)
+  and export name (case-sensitive) or ordinal, follows forwarded exports and
+  rejects circular forwarding and overlapping guest DLL address ranges.
+- An end-to-end BoxedWine fixture maps a PE32 EXE and a separate PE32 DLL,
+  patches the EXE's IAT with the DLL's guest address, and executes an x86
+  `CALL [IAT]` into the DLL before returning through the guest stack.
+  The DLL contains **synthetic x86 code**, not Windows API functionality.
 
 ## What does not work yet
 
 - Actual Wine/Windows DLL implementations (`ntdll.dll`, `kernel32.dll`,
-  etc.) and PE DLL export resolution. The import binder currently requires
-  a caller-supplied guest address, not a host function pointer.
+  etc.). PE DLL exports can be parsed and linked, but Windows APIs are
+  **not implemented**; importing a function does not make it callable unless
+  its guest code and runtime dependencies work.
 - Windows process environment (PEB/TEB), SEH, TLS, Windows system calls and
   startup conventions.
 - Executing an arbitrary Windows `.exe` or Direct3D 11 game in the browser.
@@ -48,11 +55,11 @@ host ABI, module loading and Windows/Unix boundary.
 
 Next milestones:
 
-1. Parse PE32 DLL export tables and load modules into separate guest ranges.
-2. Connect the guest IAT resolver to actual Wine-compatible DLL exports,
-   including forwarded exports and ordinal lookup.
-3. Establish the Windows PEB/TEB, initial stack and process startup.
-4. Add Win32 API coverage and a graphics translation layer.
+1. Add a recursive on-disk DLL dependency loader, guest page protection
+   mapping and support for real Wine PE module images.
+2. Establish Windows PEB/TEB, loader lists, TLS, stack and process startup.
+3. Implement/adapt the Windows API and Wine Unix/Windows ABI boundary.
+4. Add Win32 API coverage and a Direct3D-to-WebGPU graphics backend.
 
 ## Build
 
@@ -65,11 +72,22 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+Inspect an on-disk Windows PE32 executable or DLL (without running it):
+
+```sh
+./build/emuwasm_pe32_inspect --dll path/to/example.dll
+./build/emuwasm_pe32_inspect --base 0x500000 path/to/example.exe
+```
+
+The inspector validates PE headers and prints section layouts, exports,
+forwarded exports and unresolved imports. Unsupported TLS and delay-load
+directories still produce an explicit error.
+
 The original BoxedWine interpreter build is exercised by the
 [CPU source audit](.github/workflows/cpu-audit.yml) workflow, which checks
 out upstream sources and compiles the CPU/kernel/platform dependency graph.
 Its tests include `boxedwine_x86_execution`, `boxedwine_pe32_execution`,
-`boxedwine_pe32_import_execution` and `pe32_parser`.
+`boxedwine_pe32_import_execution`, `pe32_parser` and `pe32_modules`.
 
 ## Third-party licensing
 
