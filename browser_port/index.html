@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>18 Wheels of Steel — EmuWasm Browser Port</title>
+  <link rel="stylesheet" href="./port.css">
+  <script src="./port.js" defer></script>
+</head>
+<body>
+  <main class="layout">
+    <header>
+      <p class="eyebrow">EmuWasm · BoxedWine / WebAssembly</p>
+      <h1>18 Wheels of Steel <span>no navegador</span></h1>
+      <p class="lead">Execução experimental do <code>prism3d.exe</code> x86 por Wine e BoxedWine WASM com gráficos WebGL. Não é um executável recompilado nem uma versão 3D independente do jogo.</p>
+    </header>
+
+    <section class="card">
+      <h2>1. Verificação do navegador</h2>
+      <div class="checks" aria-live="polite">
+        <p id="check-wasm" class="check">WebAssembly: verificando…</p>
+        <p id="check-webgl" class="check">WebGL: verificando…</p>
+        <p id="check-secure" class="check">Origem local: verificando…</p>
+        <p id="check-runtime" class="check">BoxedWine: verificando…</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>2. Carregar os arquivos originais</h2>
+      <p>Selecione o ZIP do sistema <strong>Wine/Linux completo</strong> do BoxedWine e o ZIP da sua instalação legítima do jogo. Ambos permanecem apenas no seu PC, sob <code>.local-game-data</code>.</p>
+      <div class="upload-grid">
+        <div class="upload">
+          <label for="wine-file">Sistema Wine completo (.zip)</label>
+          <input type="file" id="wine-file" accept=".zip,application/zip">
+          <p class="hint">Ex.: <code>TinyCore15Wine11.0.zip</code>, já usado no Windows.</p>
+          <button type="button" id="wine-upload">Importar Wine</button>
+          <p id="wine-state" role="status">Não importado.</p>
+          <progress id="wine-progress" max="100" value="0" hidden></progress>
+        </div>
+        <div class="upload">
+          <label for="game-file">Jogo completo (prism3d.zip)</label>
+          <input type="file" id="game-file" accept=".zip,application/zip">
+          <p class="hint">Crie com <code>package_boxedwine_game.py</code>. O arquivo <code>prism3d.exe</code> deve estar na raiz do ZIP.</p>
+          <button type="button" id="game-upload">Importar jogo</button>
+          <p id="game-state" role="status">Não importado.</p>
+          <progress id="game-progress" max="100" value="0" hidden></progress>
+        </div>
+      </div>
+      <p class="privacy">Privacidade: o servidor responde somente em <code>127.0.0.1</code>. Não publique ZIPs do jogo, do Wine ou a pasta <code>.local-game-data</code> na internet.</p>
+    </section>
+
+    <section class="card">
+      <h2>3. Configurar e iniciar o Prism3D</h2>
+      <div class="options">
+        <label for="graphics">Renderizador do Wine
+          <select id="graphics">
+            <option value="gl" selected>OpenGL → WebGL (padrão)</option>
+            <option value="gdi">GDI (compatibilidade / diagnóstico)</option>
+          </select>
+        </label>
+        <label for="resolution">Resolução
+          <select id="resolution">
+            <option>640x480</option>
+            <option>800x600</option>
+            <option selected>1024x768</option>
+            <option>1280x720</option>
+          </select>
+        </label>
+        <label for="cpu">CPU x86 emulada
+          <select id="cpu">
+            <option value="" selected>Padrão</option>
+            <option value="p3">Pentium III</option>
+            <option value="p2">Pentium II</option>
+          </select>
+        </label>
+        <label class="check-option"><input id="sound" type="checkbox"> Ativar áudio</label>
+      </div>
+      <button type="button" class="primary" id="launch" disabled>Iniciar 18 Wheels of Steel no navegador</button>
+      <p id="launch-state" role="status">Importe os dois arquivos para habilitar.</p>
+      <p class="hint">O Wine é configurado como Windows XP (perfil separado). Controles: teclado e mouse; clique na janela do emulador para capturar o cursor quando necessário.</p>
+    </section>
+    <section class="card muted">
+      <h2>Limitações atuais</h2>
+      <p>O BoxedWine Emscripten usa WebAssembly e WebGL, mas os recursos DirectDraw/Direct3D, entrada e áudio necessários ao Prism3D podem não funcionar integralmente. O log Windows enviado anteriormente terminou com <code>Vulkan not compiled into Boxedwine</code>; por isso este lançador não solicita Vulkan.</p>
+      <p>Não incluo nem distribuo o jogo, executáveis proprietários ou seus assets. A execução até o menu principal e a renderização 3D ainda <strong>não foram confirmadas</strong>.</p>
+    </section>
+    <footer>Fonte: <a href="https://github.com/maxold1985/emuwasm" target="_blank" rel="noopener noreferrer">EmuWasm no GitHub</a> · Runtime: <a href="https://github.com/danoon2/Boxedwine" target="_blank" rel="noopener noreferrer">BoxedWine (GPL)</a></footer>
+  </main>
+</body>
+</html>
