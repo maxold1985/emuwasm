@@ -40,12 +40,12 @@ jobs:
           # Stage the original X11 headers/sources alongside kernel.
           test -f boxedwine-upstream/source/x11/x11.h
           cp -a boxedwine-upstream/source/x11 engine/
-          # Original soft-MMU headers use ../../source/util/... relative to engine/emulation.
-          # Keep the original source/ hierarchy alongside the staged engine/ tree.
-          ln -s boxedwine-upstream/source source
-          if [ ! -f source/util/bnativeheap.h ]; then
-            echo "::error::Missing source/util/bnativeheap.h after staging"
-            ls -la source/util | head -40
+          # From engine/emulation/softmmu, ../../source/util points to engine/source/util.
+          # Restore that exact relative tree instead of a repo-root source/ symlink.
+          ln -s ../boxedwine-upstream/source engine/source
+          if [ ! -f engine/source/util/bnativeheap.h ]; then
+            echo "::error::Missing engine/source/util/bnativeheap.h after staging"
+            ls -la engine/source/util | head -40
             exit 1
           fi
           echo "Original BoxedWine source trees staged under engine/"
@@ -98,7 +98,7 @@ jobs:
       - name: Execute CPU and PE32 tests with diagnostics
         run: |
           ulimit -c 0
-          ctest --test-dir build-boxedwine -R '^boxedwine_' --output-on-failure --timeout 60
+          ctest --test-dir build-boxedwine -R '^(boxedwine_|pe32_run_help)' --output-on-failure --timeout 60
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -108,3 +108,11 @@ jobs:
             build-boxedwine/Testing/Temporary/LastTest.log
             build-boxedwine/CMakeFiles/CMakeConfigureLog.yaml
           if-no-files-found: ignore
+
+      - name: Upload Linux headless PE32 runner
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emuwasm-pe32-run-linux-x86_64
+          path: build-boxedwine/emuwasm_pe32_run
+          if-no-files-found: error
