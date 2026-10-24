@@ -309,7 +309,7 @@ bool load(const std::vector<std::uint8_t>& file,
     image.isDll = isDll;
     image.preferredBase = preferredBase;
     image.loadBase = base;
-    image.entryPoint = base + entryRva;
+    image.entryPoint = entryRva ? base + entryRva : 0; // DLLs may omit DllMain
     image.sizeOfHeaders = headersSize;
     image.bytes.resize(sizeOfImage, 0);
     std::copy_n(file.begin(), headersSize, image.bytes.begin());
