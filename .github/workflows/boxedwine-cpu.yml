@@ -10,15 +10,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Fetch original BoxedWine sources
+      - name: Checkout upstream BoxedWine (GitHub Actions checkout)
+        uses: actions/checkout@v4
+        with:
+          repository: danoon2/Boxedwine
+          ref: master
+          path: boxedwine-upstream
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+      - name: Stage original BoxedWine sources
+        shell: bash
         run: |
-          # Clone the main repository first; a submodule transport failure should
-          # not prevent fetching the CPU sources. Diagnose submodules separately.
-          git -c http.version=HTTP/1.1 clone --depth 1 --single-branch --branch master \
-            https://github.com/danoon2/Boxedwine.git boxedwine-upstream
-          git -C boxedwine-upstream submodule sync --recursive
-          git -C boxedwine-upstream submodule update --init --recursive --depth 1 || \
-            echo "::warning::Optional upstream submodule checkout failed; SoftFloat staging will verify required sources."
+          set -euo pipefail
           test -d boxedwine-upstream/source/emulation/cpu
           test -d boxedwine-upstream/source/emulation/softmmu
           mkdir -p engine
