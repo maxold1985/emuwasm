@@ -86,7 +86,7 @@ int main() {
 
     // Ensure that an unresolved export never writes to the EXE's IAT.
     auto wrongDll = emuwasm::test::makePe32Dll(
-        "kernel32.dll", "SomeOtherFunction");
+        "kernel32.dll", "OtherFunction");
     save(root / "kernel32.dll", wrongDll); // direct spelling takes precedence
     WineDllLoader unresolved;
     unresolved.addSearchDirectory(root);
