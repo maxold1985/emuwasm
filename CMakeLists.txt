@@ -253,6 +253,9 @@ if(EMUWASM_BUILD_EXTRACTED)
             emuwasm_boxedwine_platform emuwasm_boxedwine_display emuwasm_softfloat
             "-Wl,--end-group")
         if(NOT EMSCRIPTEN)
+            add_executable(emuwasm_pe32_runner_cli_test tests/pe32_runner_cli.cpp)
+            add_test(NAME boxedwine_pe32_runner_cli
+                COMMAND emuwasm_pe32_runner_cli_test $<TARGET_FILE:emuwasm_pe32_run>)
             add_test(NAME pe32_run_help COMMAND emuwasm_pe32_run --help)
             add_test(NAME boxedwine_win32_fs_execution COMMAND emuwasm_win32_fs_execution)
             add_test(NAME boxedwine_x86_execution COMMAND emuwasm_x86_execution)
