@@ -26,6 +26,12 @@ Experimental Windows x86 emulation project targeting WebAssembly and WebGPU.
   patches the EXE's IAT with the DLL's guest address, and executes an x86
   `CALL [IAT]` into the DLL before returning through the guest stack.
   The DLL contains **synthetic x86 code**, not Windows API functionality.
+- An on-disk Wine-style DLL dependency loader and `emuwasm_wine_link`
+  command now recursively load i386 PE DLL files, rebase modules and bind
+  EXE/DLL IATs. A reusable BoxedWine adapter maps the linked images with
+  guest section page protections. A separate CPU integration test executes
+  an EXE -> kernel32 -> ntdll guest x86 call chain using **synthetic**
+  PE DLL files written to disk.
 
 ## What does not work yet
 
@@ -72,7 +78,9 @@ build\\Release\\emuwasm_wine_link.exe --wine-dir "D:\\wine\\i386-windows" "D:\\a
 ```
 
 The DLL search is case-insensitive, supports multiple `--wine-dir` options
-and does not call native Windows `LoadLibrary`. This loader does **not**
+and does not call native Windows `LoadLibrary`. The
+`mapLinkedWineImages()` adapter maps the linked EXE and DLL images into
+BoxedWine's original guest soft-MMU with section page protections. This loader does **not**
 execute the EXE or DLLs: Wine PE exports may require its Unix-side libraries,
 PEB/TEB, loader lists, syscall dispatch, TLS, initialization, API sets,
 exception handling and proper Win32 process startup. Real Wine binaries
