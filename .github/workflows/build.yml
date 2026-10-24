@@ -67,3 +67,28 @@ jobs:
           path: dist-wasm/
           if-no-files-found: error
           retention-days: 30
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Visual Studio 2022 x64
+        run: cmake -S . -B build-windows -G "Visual Studio 17 2022" -A x64
+      - name: Compile native tools
+        run: cmake --build build-windows --config Release --parallel 2
+      - name: Run native tests
+        run: ctest --test-dir build-windows -C Release --output-on-failure
+      - name: Package Windows executables
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist-windows | Out-Null
+          Copy-Item build-windows/Release/emuwasm_pe32_inspect.exe dist-windows/
+          Copy-Item build-windows/Release/emuwasm_wine_link.exe dist-windows/
+          Copy-Item README.md dist-windows/
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: emuwasm-windows-x64
+          path: dist-windows/
+          if-no-files-found: error
+          retention-days: 30
