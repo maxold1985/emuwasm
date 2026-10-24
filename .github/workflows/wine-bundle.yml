@@ -41,12 +41,12 @@ jobs:
       - name: Compile core Wine PE32 DLLs from source
         run: |
           make -C wine-build -j 4 \
-            dlls/ntdll/ntdll.dll \
-            dlls/kernelbase/kernelbase.dll \
-            dlls/kernel32/kernel32.dll \
-            dlls/advapi32/advapi32.dll \
-            dlls/gdi32/gdi32.dll \
-            dlls/user32/user32.dll
+            dlls/ntdll/i386-windows/ntdll.dll \
+            dlls/kernelbase/i386-windows/kernelbase.dll \
+            dlls/kernel32/i386-windows/kernel32.dll \
+            dlls/advapi32/i386-windows/advapi32.dll \
+            dlls/gdi32/i386-windows/gdi32.dll \
+            dlls/user32/i386-windows/user32.dll
       - name: Validate and collect Wine DLLs
         run: |
           python3 scripts/collect_wine_dlls.py \
