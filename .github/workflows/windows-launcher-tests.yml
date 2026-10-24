@@ -38,3 +38,10 @@ jobs:
           $text | Write-Host
           if ($LASTEXITCODE -ne 0) { throw "Windows dry-run failed: $LASTEXITCODE" }
           if ($text -notmatch '/mnt/drive_d' -or $text -notmatch 'D:\\prism3d.exe') { throw 'Expected mapped Windows drive or POSIX working directory not found' }
+          $diagnostics = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run_boxedwine_game_windows.ps1 -GameDirectory $game -WineRootZip $zip -BoxedWineExecutable $exe -ProfileDirectory (Join-Path $temp 'profile') -WinXP -DebugWine -NoSound -Pentium3 -DryRun 2>&1 | Out-String
+          $diagnostics | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "WinXP diagnostics dry-run failed: $LASTEXITCODE" }
+          foreach ($expected in @('wine-set-winxp.log', 'HKCU\Software\Wine', 'winxp', 'WINEDEBUG=+seh,+loaddll,+virtual', '-nosound', '-p3', 'prism3d-', '/mnt/drive_d')) {
+            if (-not $diagnostics.Contains($expected)) { throw "Expected diagnostic switch missing: $expected" }
+          }
+          if ($diagnostics.Contains('-disableLinearMemory')) { throw 'The 26R1 binary does not support -disableLinearMemory' }
