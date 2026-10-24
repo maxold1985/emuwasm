@@ -136,6 +136,13 @@ class LocalHTTPTest(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertGreater(len(data), 10)
 
+    def test_block_dns_rebinding_host(self) -> None:
+        # A hostile DNS alias resolving to loopback must not read local ZIPs.
+        request = Request(self.base + "/api/status", headers={"Host": "evil.example"})
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(request, timeout=5)
+        self.assertEqual(caught.exception.code, 403)
+
     def test_block_cross_origin_upload(self) -> None:
         code, _ = self.call("/api/upload/game", b"ZIP", origin="https://example.com")
         self.assertEqual(code, 403)
