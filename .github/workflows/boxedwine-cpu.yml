@@ -1,6 +1,13 @@
 name: BoxedWine x86 CPU integration diagnostics
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/boxedwine-cpu.yml'
+      - 'tools/pe32_run.cpp'
+      - 'tests/pe32_runner_cli.cpp'
+      - 'src/pe32_boxedwine.cpp'
+      - 'CMakeLists.txt'
 
 jobs:
   boxedwine-cpu:
