@@ -2,6 +2,9 @@ name: Build real Wine i386 bin for BoxedWine browser
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-boxedwine-wine-bin.yml'
 
 permissions:
   contents: read
