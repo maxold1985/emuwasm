@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import threading
+import time
 import stat
 import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -111,6 +112,50 @@ def validate_archive(path: Path, kind: str) -> dict:
 
 
 
+
+def identical_zip_files(source: Path, destination: Path) -> bool:
+    """Compare a validated upload against the installed ZIP without replacing it."""
+    if not destination.is_file() or source.stat().st_size != destination.stat().st_size:
+        return False
+    with source.open("rb") as first, destination.open("rb") as second:
+        return hashlib.file_digest(first, "sha256").digest() == (
+            hashlib.file_digest(second, "sha256").digest()
+        )
+
+
+class ArchiveInUseError(Exception):
+    """Windows has locked an existing ZIP or blocked its replacement."""
+
+
+def replace_archive_safely(source: Path, destination: Path) -> bool:
+    """Publish a validated ZIP; False means identical data is already present.
+
+    Never remove the original destination as a workaround for WinError 5.
+    """
+    try:
+        if identical_zip_files(source, destination):
+            return False
+    except PermissionError:
+        # If reading is denied, try the atomic replacement before giving up.
+        pass
+    for attempt in range(3):
+        try:
+            os.replace(source, destination)
+            return True
+        except PermissionError as exc:
+            if attempt < 2:
+                time.sleep(0.25 * (attempt + 1))
+                continue
+            raise ArchiveInUseError(
+                f"Windows bloqueou a substituicao de {destination.name} "
+                "(WinError 5). Feche outras abas do BoxedWine e instancias "
+                "do servidor Python que estejam usando esse ZIP. "
+                "Se o ZIP atual ja estiver valido, nao precisa importar novamente. "
+                "O arquivo anterior foi preservado."
+            ) from exc
+    return False
+
+
 def import_wine_artifact(artifact: Path, destination: Path) -> bool:
     """Unwrap the GitHub Actions artifact (outer ZIP containing boxedwine.zip).
 
@@ -132,38 +177,38 @@ def import_wine_artifact(artifact: Path, destination: Path) -> bool:
             with os.fdopen(fd, "wb") as target, outer.open(member) as source:
                 shutil.copyfileobj(source, target, READ_CHUNK)
             validate_archive(tmp, "wine")
-            os.replace(tmp, destination)
+            replace_archive_safely(tmp, destination)
         finally:
             tmp.unlink(missing_ok=True)
     return True
 
 
 def ensure_local_wine(user_data: Path) -> str | None:
-    """Import a previously downloaded Actions artifact when Wine is requested.
+    """Import a local Wine artifact only when there is no valid Wine ZIP.
 
-    No remote requests or GitHub credentials: the artifact must be on disk.
+    Status and GET/HEAD must never replace an existing valid upload while the
+    browser may have the file open on Windows.
     """
     destination = user_data / ALLOWED_UPLOADS["wine"]
+    if destination.is_file():
+        try:
+            validate_archive(destination, "wine")
+            return None
+        except (ValueError, OSError):
+            pass
+
     artifact = user_data / WINE_ARTIFACT
     if not artifact.is_file():
         return None
-    # Prefer a newly downloaded build artifact over an older valid ZIP.
-    # Store its digest to avoid re-importing on every HEAD/GET/status request.
     marker = user_data / ".wine-artifact.sha256"
     try:
         with artifact.open("rb") as source:
             digest = hashlib.file_digest(source, "sha256").hexdigest()
-        if destination.is_file() and marker.is_file() and marker.read_text().strip() == digest:
-            try:
-                validate_archive(destination, "wine")
-                return None
-            except (ValueError, OSError):
-                pass
         import_wine_artifact(artifact, destination)
         marker.write_text(digest, encoding="ascii")
         print(f"[browser-port] Wine importado do artefato local: {artifact.name}", flush=True)
         return None
-    except (ValueError, OSError, BadZipFile) as exc:
+    except (ValueError, OSError, BadZipFile, ArchiveInUseError) as exc:
         return f"Falha ao importar artefato local Wine: {exc}"
 
 
@@ -429,12 +474,17 @@ class GameHandler(BaseHTTPRequestHandler):
                     remaining -= len(chunk)
             result = validate_archive(tmp, kind)
             destination = self.server.user_data / ALLOWED_UPLOADS[kind]
-            os.replace(tmp, destination)
-            self.reply_json(200, {"ok": True, **result})
+            installed = replace_archive_safely(tmp, destination)
+            self.reply_json(200, {"ok": True, "reused": not installed, **result})
+        except ArchiveInUseError as exc:
+            self.reply_json(409, {"error": str(exc)})
         except (ValueError, OSError) as exc:
             self.reply_json(400, {"error": str(exc)})
         finally:
-            tmp.unlink(missing_ok=True)
+            try:
+                tmp.unlink(missing_ok=True)
+            except PermissionError:
+                print(f"[browser-port] ZIP temporario bloqueado: {tmp.name}", flush=True)
 
     def log_message(self, format: str, *args: object) -> None:
         print(f"[browser-port] {self.client_address[0]} {format % args}")
