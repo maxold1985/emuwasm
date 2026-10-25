@@ -57,8 +57,8 @@ Implementation:
   PACK_ROW_LENGTH, PACK_SKIP_ROWS and PACK_SKIP_PIXELS.
 - The temporary framebuffer and pixel-store state are restored after the
   read. A bound PACK PBO, texture arrays, depth textures and compressed or
-  floating-point output remain unsupported. No WebGL shader pipeline or
-  immediate-mode rendering is added by this change.
+  floating-point output remain unsupported. The later fixed-pipeline
+  subsystem below adds immediate-mode rendering independently.
 - `scripts/test_gl4es_gl_functions.cpp` runs native unit tests for real
   buffer-selection semantics and readback pixel packing. The WASM build tests
   that the actual OpenGL dispatch functions are linkable.
@@ -67,6 +67,50 @@ Logs use `emuwasm-gl4es: glGetTexImage`,
 `emuwasm-gl4es: glDrawBuffer` and `emuwasm-gl4es: glReadBuffer`.
 This subset is original adaptation code inspired by GL4ES, **not** an
 integration or build of upstream libGL4ES.
+
+## Functional OpenGL 1.x rendering (35 callbacks)
+
+The current Emscripten build intercepts 35 additional BoxedWine guest GL
+entry points (not merely texture format changes), including:
+
+- Geometry: `glBegin`, `glEnd`, `glVertex2f/3f/4f`, and signed integer,
+  short and double vertex variants.
+- Vertex colors and UV: `glColor3f/4f/3ub/4ub`, `glTexCoord2f/2d`.
+- Matrices: `glMatrixMode`, `glLoadIdentity`, `glPushMatrix`,
+  `glPopMatrix`, `glTranslatef`, `glScalef`, `glRotatef`,
+  `glOrtho`, `glFrustum`, `glLoadMatrixf/d`, `glMultMatrixf/d`.
+- State: `glEnable`/`glDisable` for `GL_TEXTURE_2D` and `GL_ALPHA_TEST`;
+  `glAlphaFunc`. Other glEnable/glDisable capabilities use the existing
+  native/Emscripten GL route.
+- Readback: `glGetFloatv`, `glGetDoublev` and `glGetIntegerv`
+  for emulated matrices, colors, current texture coordinates, matrix mode
+  and matrix-stack depths. Other queries still use the existing BoxedWine
+  handlers.
+
+`glEnd` triangulates quads/quad strips and convex polygons, creates and
+uploads an interleaved vertex buffer, generates/link GLSL ES 3.00 shaders,
+configures VAO attribute pointers, uploads modelview/projection/texture
+matrices, and **calls actual WebGL2 `gl.drawArrays`**. GPU program, VAO and
+array-buffer bindings are restored. The real shader samples the currently
+active texture unit and performs a fragment alpha comparison/discard.
+
+Source:
+- `browser_port/emuwasm_gl4es_fixed_pipeline.inc`: WebGL2 GL execution
+  and per-context state (a WeakMap keyed by the host WebGL context).
+- `browser_port/emuwasm_gl4es_fixed_handlers.inc`: BoxedWine x86 callback
+  entry points and argument marshalling; native builds retain desktop GL.
+- `scripts/test_gl4es_fixed_pipeline.mjs`: exercises real calls on a mock
+  WebGL2 context: shader compilation, bufferData, drawArrays, matrices,
+  texture and alpha state, query values and binding restoration.
+
+**Current limitations:** no glLight*/GL_LIGHTING, glFog, multi-texture
+fixed-function combine, normal-based lighting, non-convex polygon
+tessellation, glVertex*v pointer variants, display lists, selection/feedback
+rendering, client vertex array emulation, or glPolygonMode emulation. Shader
+states and operations must be added deliberately; the presence of a guest GL
+callback alone does not imply complete OpenGL conformance. The shader and
+WebGL2 pipeline are experimental and not yet validated by running the
+Prism3D game.
 
 ## Renderbuffer compatibility
 
@@ -88,9 +132,12 @@ including when WineD3D deliberately probes an unsupported combination.
 
 ## Not yet implemented
 
-This does **not** integrate GL4ES fixed-function pipeline emulation, shader
-conversion, GLX, compressed textures, general depth/stencil data conversion,
-or framebuffer attachment emulation. No unsupported GL feature is falsely advertised.
+This does **not** integrate the full upstream GL4ES fixed-function
+pipeline or all OpenGL compatibility APIs. The subset above supports genuine
+immediate-mode rendering, but full shader conversion, lighting, fog, GLX,
+compressed textures, depth/stencil data conversion and generalized framebuffer
+attachment emulation remain incomplete. No unsupported GL feature is falsely
+advertised.
 
 A future full GL4ES integration would need to route BoxedWine's generated
 OpenGL entry points into GL4ES's context-bound implementation and test that
