@@ -26,6 +26,7 @@ class WebGLPatchTest(unittest.TestCase):
             "Translatef", "Scalef", "Rotatef", "Ortho", "Frustum",
             "Enable", "Disable", "AlphaFunc",
             "LoadMatrixf", "LoadMatrixd", "MultMatrixf", "MultMatrixd",
+            "GetFloatv", "GetDoublev",
         )
         fixed_declarations = "".join(
             f'GL_FUNCTION({name}, void, (), (),,,("gl{name}"))\n'
@@ -39,6 +40,16 @@ class WebGLPatchTest(unittest.TestCase):
             encoding="utf-8",
         )
         (gl / "glcommon.cpp").write_text(
+            "void glcommon_glGetIntegerv(CPU* cpu) {\n"
+            "    GLenum pname = ARG1;\n"
+            "    if (pname == GL_NUM_EXTENSIONS) {\n"
+            "        getFilteredExtensionString(cpu->thread->process.get());\n"
+            "        cpu->memory->writed(ARG2, cpu->thread->process->numberOfExtensions);\n"
+            "    } else {\n"
+            "        MarshalReadWrite<GLint> buffer(cpu, ARG2, getSize(ARG1));\n"
+            "        GL_FUNC(pglGetIntegerv)(pname, buffer.getPtr());\n"
+            "    }\n"
+            "}\n"
             "void glcommon_glGetTexImage(CPU* cpu) {\n"
             "    GL_FUNC(pglGetTexImage)(target, level, format, type, pixels.getPtr());\n"
             "}\n"
@@ -123,16 +134,20 @@ class WebGLPatchTest(unittest.TestCase):
             self.assertIn("GL_FUNCTION_CUSTOM(TexImage2D", callbacks)
             self.assertIn("GL_FUNCTION_CUSTOM(DrawBuffer", callbacks)
             self.assertIn("GL_FUNCTION_CUSTOM(ReadBuffer", callbacks)
-            self.assertEqual(callbacks.count("GL_FUNCTION_CUSTOM("), 36)
+            self.assertEqual(callbacks.count("GL_FUNCTION_CUSTOM("), 38)
             self.assertIn("GL_FUNCTION_CUSTOM(Begin", callbacks)
             self.assertIn("GL_FUNCTION_CUSTOM(End", callbacks)
             self.assertIn("GL_FUNCTION_CUSTOM(LoadMatrixd", callbacks)
             self.assertIn("GL_FUNCTION_CUSTOM(MultMatrixf", callbacks)
+            self.assertIn("GL_FUNCTION_CUSTOM(GetFloatv", callbacks)
+            self.assertIn("GL_FUNCTION_CUSTOM(GetDoublev", callbacks)
             source = (gl / "glcommon.cpp").read_text(encoding="utf-8")
             self.assertIn('#include "emuwasm_webgl_pixel.inc"', source)
             self.assertIn('#include "emuwasm_gl4es_gl_functions.inc"', source)
             self.assertIn('#include "emuwasm_gl4es_fixed_handlers.inc"', source)
             self.assertIn("emuwasm_gl4es_get_tex_image_rgba8", source)
+            self.assertIn("emuwasm_ffp_is_integer_query(pname)", source)
+            self.assertIn("emuwasm_ffp_query(pname", source)
             self.assertIn("emuwasm_gl4es::pack_rgba_readback", source)
             self.assertIn("emuwasm_gl4es_set_error(cpu, GL_INVALID_OPERATION)", source)
             self.assertIn("EmuWasmWebGLPixelUpload upload", source)
