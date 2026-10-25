@@ -10,6 +10,7 @@ on:
       - 'scripts/patch_boxedwine_webgl.py'
       - 'scripts/test_patch_boxedwine_webgl.py'
       - 'scripts/test_gl4es_formats.cpp'
+      - 'scripts/test_gl4es_framebuffer.cpp'
 
 permissions:
   contents: read
@@ -31,6 +32,8 @@ jobs:
           python3 -m unittest discover -s scripts -p 'test_patch_boxedwine_webgl.py' -v
           c++ -std=c++11 -Wall -Wextra -Werror -Ibrowser_port scripts/test_gl4es_formats.cpp -o /tmp/test_gl4es_formats
           /tmp/test_gl4es_formats
+          c++ -std=c++11 -Wall -Wextra -Werror -Ibrowser_port scripts/test_gl4es_framebuffer.cpp -o /tmp/test_gl4es_framebuffer
+          /tmp/test_gl4es_framebuffer
       - name: Verify browser upload security and local WASM service
         run: |
           python3 -m unittest discover -s browser_port -p 'test_*.py' -v
@@ -66,6 +69,8 @@ jobs:
           grep -q 'EmuWasmWebGLPixelUpload' boxedwine-upstream/source/opengl/glcommon.cpp
           grep -q 'GL_FUNCTION_CUSTOM(TexImage2D' boxedwine-upstream/source/opengl/glfunctions.h
           test -s boxedwine-upstream/source/opengl/emuwasm_gl4es_formats.h
+          test -s boxedwine-upstream/source/opengl/emuwasm_gl4es_framebuffer.h
+          grep -q 'normalize_renderbuffer_format' boxedwine-upstream/source/opengl/glfunctions_ext2.cpp
       - name: Compile new patched WASM/WebGL runtime, with GL counters
         shell: bash
         run: |
@@ -118,6 +123,7 @@ jobs:
           cp emuwasm/browser_port/gl_usage.js browser-build/gl_usage.js
           cp emuwasm/browser_port/boxedwine_webgl_pixel.inc browser-build/boxedwine_webgl_pixel.inc
           cp emuwasm/browser_port/emuwasm_gl4es_formats.h browser-build/emuwasm_gl4es_formats.h
+          cp emuwasm/browser_port/emuwasm_gl4es_framebuffer.h browser-build/emuwasm_gl4es_framebuffer.h
           cp emuwasm/browser_port/server.py browser-build/server.py
           cp emuwasm/scripts/package_boxedwine_game.py browser-build/package_boxedwine_game.py
           # Inject early debugging before the upstream filesystem shell and WASM.
@@ -197,6 +203,7 @@ jobs:
           test -s browser-build/diagnostics.js
           test -s browser-build/gl_usage.js
           test -s browser-build/emuwasm_gl4es_formats.h
+          test -s browser-build/emuwasm_gl4es_framebuffer.h
           test -s browser-build/boxedwine.wasm
           test -s browser-build/EMUWASM-OPENGL-BUILD.txt
           ls -lah browser-build | head -40
