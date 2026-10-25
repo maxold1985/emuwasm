@@ -144,6 +144,34 @@ OpenGL entry points into GL4ES's context-bound implementation and test that
 GL4ES's GLES2 backend works with Emscripten/WebGL2. Simply linking
 `libGL` will not intercept BoxedWine's existing GL marshalling layer.
 
+## WineD3D GL function discovery diagnostics
+
+The live `emuwasm-gl-functions.txt` export reports two separate measures:
+
+1. **Called callbacks:** guest requests that reached BoxedWine's OpenGL/EGL
+   dispatcher. A call such as `glProcAddressAvailable` says nothing about
+   which GL name was requested or whether the answer was true.
+2. **Queried GL functions:** the literal `glFoo` names submitted to
+   `glProcAddressAvailable`, with *yes* and *no* reply counts, and a status
+   `DISPONIVEL`, `INDISPONIVEL` or `MISTO`.
+
+The new probe section is only available after recompiling the wasm runtime.
+It is collected by `emuwasmRecordProcQuery` in
+`scripts/patch_boxedwine_webgl.py` and exported by
+`browser_port/gl_usage.js`. Each name is bounded (up to 4096 unique names)
+to avoid infinite memory growth on malformed programs.
+
+The proc-lookup fix checks that a custom BoxedWine guest callback actually
+exists, rather than requiring an unrelated desktop `pglFoo` function
+pointer. It explicitly handles the functions for which the EmuWasm
+compatibility layer supplies a runtime handler and continues to honor the
+upstream unsupported-signature restrictions. **Being discoverable does not
+imply complete OpenGL conformance or GPU rendering success.**
+
+Interpret the new section before implementing more GL calls: functions
+`INDISPONIVEL` identify candidates for missing implementation or unsupported
+extensions; repeated availability probes are not the same as rendering work.
+
 ## Testing
 
 Run the workflow `18 Wheels of Steel browser port (WASM WebGL)`, download
