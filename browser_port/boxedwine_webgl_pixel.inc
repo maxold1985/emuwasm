@@ -11,6 +11,7 @@
 #ifdef __EMSCRIPTEN__
 #include <cstdint>
 #include <vector>
+#include "emuwasm_gl4es_formats.h"
 
 // WebGL2 supports getBufferSubData, while GLES3 intentionally has no matching
 // native GL entry point. Read the existing PIXEL_UNPACK_BUFFER without mapping
@@ -232,22 +233,31 @@ void glcommon_glTexImage2D(CPU* cpu) {
                  target, level, internalFormat, width, height, border,
                  format, type, static_cast<int>(usingPbo), pixels != nullptr);
     }
+    const GLenum guestFormat = format;
     EmuWasmWebGLPixelUpload upload(format, type, pixels);
     upload.prepare(width, height, usingPbo);
     format = upload.format;
     type = upload.type;
     pixels = upload.pixels;
 
-    // Desktop glTexImage2D may specify BGRA/BGR as *internal* format.
-    // WebGL2 does not support either as a storage format.
-    if (internalFormat == 0x80E1)
-        internalFormat = GL_RGBA;
-    else if (internalFormat == 0x80E0)
-        internalFormat = GL_RGB;
-    else if (internalFormat == 4)
-        internalFormat = GL_RGBA; // Legacy GL component-count internal format
-    else if (internalFormat == 3)
-        internalFormat = GL_RGB;
+    // Inspired by GL4ES texture.c's desktop internal-format classification.
+    // Never normalize an unconverted BGRA/BGR upload: WebGL2 would still
+    // reject its external pixel format.
+    const bool isDesktopBgr = guestFormat == 0x80E0 || guestFormat == 0x80E1;
+    const bool conversionOk = !isDesktopBgr || format != guestFormat;
+    const emuwasm_gl4es::TextureFormat mapped =
+        emuwasm_gl4es::normalize_texture_format(
+            static_cast<uint32_t>(internalFormat),
+            static_cast<uint32_t>(format),
+            static_cast<uint32_t>(type),
+            conversionOk);
+    if (mapped.normalized) {
+        thread_local unsigned formatReports = 0;
+        if (formatReports++ < 80)
+            klog_fmt("emuwasm-gl4es: internal texture format 0x%x -> 0x%x external=0x%x",
+                     internalFormat, mapped.internal, format);
+    }
+    internalFormat = static_cast<GLint>(mapped.internal);
 #endif
 
     GL_FUNC(pglTexImage2D)(target, level, internalFormat, width, height,
