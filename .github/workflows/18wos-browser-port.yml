@@ -126,6 +126,12 @@ jobs:
           TXT
           test -s browser-build/server.py
           python3 -m py_compile browser-build/server.py
+          # The upstream Actions artifact also contains hundreds of MSBuild/Emscripten
+          # intermediate object/dependency files under home/runner. They are not
+          # required by the browser and should not be redistributed.
+          rm -rf browser-build/home browser-build/__pycache__
+          test -s browser-build/diagnostics.js
+          test -s browser-build/boxedwine.wasm
           ls -lah browser-build | head -40
       - name: Publish local browser port + WebAssembly runtime (no game content)
         uses: actions/upload-artifact@v4
