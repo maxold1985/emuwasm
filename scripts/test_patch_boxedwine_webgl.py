@@ -37,7 +37,13 @@ class WebGLPatchTest(unittest.TestCase):
         )
         (gl / "glfunctions_ext1.cpp").write_text(
             "    EAX=GL_FUNC(ext_glCheckFramebufferStatus)(ARG1);\n"
-            "    EAX=GL_FUNC(ext_glCheckFramebufferStatusEXT)(ARG1);\n",
+            "    EAX=GL_FUNC(ext_glCheckFramebufferStatusEXT)(ARG1);\n"
+            "    GL_FUNC(ext_glFramebufferTexture2D)(ARG1, ARG2, ARG3, ARG4, ARG5);\n"
+            "    GL_FUNC(ext_glFramebufferRenderbuffer)(ARG1, ARG2, ARG3, ARG4);\n",
+            encoding="utf-8",
+        )
+        (gl / "glfunctions_ext2.cpp").write_text(
+            "    GL_FUNC(ext_glRenderbufferStorage)(ARG1, ARG2, ARG3, ARG4);\n",
             encoding="utf-8",
         )
         return gl
@@ -61,6 +67,10 @@ class WebGLPatchTest(unittest.TestCase):
             self.assertIn("glGetError=0x%x", source)
             fb = (gl / "glfunctions_ext1.cpp").read_text(encoding="utf-8")
             self.assertIn("glCheckFramebufferStatusEXT target=0x%x", fb)
+            self.assertIn("emuwasm-webgl: glFramebufferTexture2D target=0x%x", fb)
+            self.assertIn("emuwasm-webgl: glFramebufferRenderbuffer target=0x%x", fb)
+            self.assertIn("emuwasm-webgl: glRenderbufferStorage target=0x%x",
+                          (gl / "glfunctions_ext2.cpp").read_text(encoding="utf-8"))
 
     def test_repeated_patch_fails_instead_of_silently_replacing(self):
         with TemporaryDirectory() as temp:
