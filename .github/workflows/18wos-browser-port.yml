@@ -61,18 +61,24 @@ jobs:
           # This makes JS startup failures visible in the browser and terminal.
           python3 - <<'PY'
           from pathlib import Path
-          page = Path("browser-build/boxedwine.html")
-          html = page.read_text(encoding="utf-8")
-          import re
-          pattern = r'(<script\s+src=["\']fsfs\.js["\']\s*></script>)'
-          matches = list(re.finditer(pattern, html, re.I))
+          page = Path('browser-build/boxedwine.html')
+          html = page.read_text(encoding='utf-8')
+          # Emscripten's HTML optimizer removes quote marks and most whitespace:
+          #   <script src=fsfs.js></script>
+          # Accept both its minified output and the original source HTML.
+          markers = (
+              '<script src=fsfs.js></script>',
+              '<script src="fsfs.js"></script>',
+              "<script src='fsfs.js'></script>",
+          )
+          matches = [marker for marker in markers if marker in html]
           if len(matches) != 1:
-              raise SystemExit(f"Unable to inject browser diagnostics: fsfs.js tags={len(matches)}")
-          html = re.sub(pattern,
-              '<script src="diagnostics.js"></script>\n' + r'\1',
-              html, count=1, flags=re.I)
-          page.write_text(html, encoding="utf-8")
+              raise SystemExit(f'Unable to inject early WASM diagnostics: fsfs tags={len(matches)}')
+          marker = matches[0]
+          html = html.replace(marker, '<script src=diagnostics.js></script>' + marker, 1)
           assert html.index('diagnostics.js') < html.index('fsfs.js')
+          page.write_text(html, encoding='utf-8')
+          print('Injected diagnostic bridge into minified Emscripten HTML')
           PY
           cat > browser-build/start_windows.bat <<'BAT'
           @echo off
