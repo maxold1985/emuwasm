@@ -16,10 +16,15 @@ class WebGLPatchTest(unittest.TestCase):
         gl = root / "source/opengl"
         gl.mkdir(parents=True)
         (gl / "glfunctions.h").write_text(
-            "GL_FUNCTION(TexImage2D, void, (GLenum target), (ARG1), , , (\"glTexImage2D\"))\n",
+            "GL_FUNCTION(TexImage2D, void, (GLenum target), (ARG1), , , (\"glTexImage2D\"))\n"
+            "GL_FUNCTION(DrawBuffer, void, (GLenum mode), (ARG1),,,(\"glDrawBuffer\"))\n"
+            "GL_FUNCTION(ReadBuffer, void, (GLenum mode), (ARG1),,,(\"glReadBuffer\"))\n",
             encoding="utf-8",
         )
         (gl / "glcommon.cpp").write_text(
+            "void glcommon_glGetTexImage(CPU* cpu) {\n"
+            "    GL_FUNC(pglGetTexImage)(target, level, format, type, pixels.getPtr());\n"
+            "}\n"
             "void glcommon_glTexSubImage2D(CPU* cpu) {\n"
             "    GL_FUNC(pglTexSubImage2D)(target, level, xoffset, "
             "yoffset, width, height, format, type, pixels);\n"
@@ -77,6 +82,8 @@ class WebGLPatchTest(unittest.TestCase):
             overlay.write_text("// shim fixture\n", encoding="utf-8")
             (root / "emuwasm_gl4es_formats.h").write_text("// mapper fixture\n", encoding="utf-8")
             (root / "emuwasm_gl4es_framebuffer.h").write_text("// fbo fixture\n", encoding="utf-8")
+            (root / "emuwasm_gl4es_gl_functions.inc").write_text("// real GL fixture\n", encoding="utf-8")
+            (root / "emuwasm_gl4es_gl_functions.h").write_text("// GL helper fixture\n", encoding="utf-8")
             patcher.apply(root, overlay)
             self.assertEqual(
                 (gl / "emuwasm_webgl_pixel.inc").read_text(encoding="utf-8"),
@@ -86,10 +93,20 @@ class WebGLPatchTest(unittest.TestCase):
                              "// mapper fixture\n")
             self.assertEqual((gl / "emuwasm_gl4es_framebuffer.h").read_text(encoding="utf-8"),
                              "// fbo fixture\n")
+            self.assertEqual((gl / "emuwasm_gl4es_gl_functions.inc").read_text(encoding="utf-8"),
+                             "// real GL fixture\n")
+            self.assertEqual((gl / "emuwasm_gl4es_gl_functions.h").read_text(encoding="utf-8"),
+                             "// GL helper fixture\n")
             callbacks = (gl / "glfunctions.h").read_text(encoding="utf-8")
             self.assertIn("GL_FUNCTION_CUSTOM(TexImage2D", callbacks)
+            self.assertIn("GL_FUNCTION_CUSTOM(DrawBuffer", callbacks)
+            self.assertIn("GL_FUNCTION_CUSTOM(ReadBuffer", callbacks)
             source = (gl / "glcommon.cpp").read_text(encoding="utf-8")
             self.assertIn('#include "emuwasm_webgl_pixel.inc"', source)
+            self.assertIn('#include "emuwasm_gl4es_gl_functions.inc"', source)
+            self.assertIn("emuwasm_gl4es_get_tex_image_rgba8", source)
+            self.assertIn("emuwasm_gl4es::pack_rgba_readback", source)
+            self.assertIn("emuwasm_gl4es_set_error(cpu, GL_INVALID_OPERATION)", source)
             self.assertIn("EmuWasmWebGLPixelUpload upload", source)
             self.assertIn("glGetError=0x%x", source)
             self.assertIn("glCallCounters.recordAndIsFirst(index)", source)
@@ -119,6 +136,8 @@ class WebGLPatchTest(unittest.TestCase):
             overlay.write_text("// shim fixture\n", encoding="utf-8")
             (root / "emuwasm_gl4es_formats.h").write_text("// mapper fixture\n", encoding="utf-8")
             (root / "emuwasm_gl4es_framebuffer.h").write_text("// fbo fixture\n", encoding="utf-8")
+            (root / "emuwasm_gl4es_gl_functions.inc").write_text("// real GL fixture\n", encoding="utf-8")
+            (root / "emuwasm_gl4es_gl_functions.h").write_text("// GL helper fixture\n", encoding="utf-8")
             patcher.apply(root, overlay)
             with self.assertRaisesRegex(RuntimeError, "already patched"):
                 patcher.apply(root, overlay)
