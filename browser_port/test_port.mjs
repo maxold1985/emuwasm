@@ -10,6 +10,7 @@ const nodes = new Map([
     ["resolution", { value: "1024x768" }],
     ["cpu", { value: "" }],
     ["sound", { checked: false }],
+    ["storage", { value: "memory" }],
 ]);
 const document = {
     getElementById(id) {
@@ -47,9 +48,9 @@ assert.equal(q.get("p"), "prism3d.exe");
 assert.equal(q.get("registry"), "winxp,gl");
 assert.equal(q.get("resolution"), "1024x768");
 assert.equal(q.get("sound"), "false");
-assert.equal(q.get("storage"), "idb");
+assert.equal(q.get("storage"), "memory");
 assert.equal(q.get("auto"), "true");
-assert.equal(q.get("rootfs"), "idb");
+assert.equal(q.get("rootfs"), "memory");
 
 nodes.get("graphics").value = "gdi";
 nodes.get("sound").checked = true;
@@ -59,6 +60,14 @@ assert.equal(compatibilityURL.searchParams.get("registry"), "winxp,gdi");
 assert.equal(compatibilityURL.searchParams.get("sound"), "true");
 assert.equal(compatibilityURL.searchParams.get("cpu"), "p3");
 
+nodes.get("storage").value = "idb";
+const persistentURL = new URL(call("buildBoxedwineURL();"));
+assert.equal(persistentURL.searchParams.get("storage"), "idb");
+assert.equal(persistentURL.searchParams.get("rootfs"), "idb");
+
+nodes.get("storage").value = "disk";
+assert.throws(() => call("buildBoxedwineURL();"), /Modo de armazenamento invalido/);
+nodes.get("storage").value = "memory";
 nodes.get("graphics").value = "vulkan";
 assert.throws(() => call("buildBoxedwineURL();"), /Renderizador invalido/);
 
