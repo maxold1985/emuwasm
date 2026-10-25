@@ -7,6 +7,7 @@ on:
       - '.github/workflows/18wos-browser-port.yml'
       - 'browser_port/**'
       - 'scripts/package_boxedwine_game.py'
+      - 'scripts/patch_boxedwine_webgl.py'
 
 permissions:
   contents: read
@@ -23,26 +24,78 @@ jobs:
           node --check browser_port/port.js
           node --check browser_port/diagnostics.js
           node browser_port/test_port.mjs
+          python3 -m unittest discover -s scripts -p 'test_patch_boxedwine_webgl.py' -v
       - name: Verify browser upload security and local WASM service
         run: |
           python3 -m unittest discover -s browser_port -p 'test_*.py' -v
           python3 -m unittest discover -s tests -p 'test_boxedwine_game_tools.py' -v
 
-  package-browser:
+  build-webgl:
     needs: browser-port-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout EmuWasm shader/texture compatibility overlay
+        uses: actions/checkout@v4
+        with:
+          path: emuwasm
+      - name: Checkout upstream BoxedWine OpenGL backend
+        uses: actions/checkout@v4
+        with:
+          repository: danoon2/Boxedwine
+          ref: 2dbabfcd108ae58f803cd4db08d70b67b003af74
+          path: boxedwine-upstream
+          persist-credentials: false
+      - name: Checkout Emscripten SDK
+        uses: actions/checkout@v4
+        with:
+          repository: emscripten-core/emsdk
+          path: emsdk
+          persist-credentials: false
+      - name: Apply OpenGL desktop to WebGL2 texture compatibility layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 emuwasm/scripts/patch_boxedwine_webgl.py boxedwine-upstream
+          grep -q 'EmuWasmWebGLPixelUpload' boxedwine-upstream/source/opengl/glcommon.cpp
+          grep -q 'GL_FUNCTION_CUSTOM(TexImage2D' boxedwine-upstream/source/opengl/glfunctions.h
+      - name: Compile new patched WASM/WebGL runtime, with GL counters
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./emsdk/emsdk install latest
+          ./emsdk/emsdk activate latest
+          source emsdk/emsdk_env.sh
+          emcc --version
+          make -C boxedwine-upstream/project/emscripten release WEBGL_COUNTERS=1 -j2
+          build=boxedwine-upstream/project/emscripten/Build/Release
+          test -s "$build/boxedwine.html"
+          test -s "$build/boxedwine.js"
+          test -s "$build/boxedwine.wasm"
+          printf '%s\n' 'EmuWasm: patched BoxedWine OpenGL to WebGL2 BGRA/BGR support' \
+            'Source: danoon2/Boxedwine @ 2dbabfcd108ae58f803cd4db08d70b67b003af74' \
+            'Build: WEBGL_COUNTERS=1; Wine Linux ZIP/game ZIP not included' \
+            > "$build/EMUWASM-OPENGL-BUILD.txt"
+          ls -lh "$build"/boxedwine.*
+      - name: Publish freshly compiled OpenGL/WebGL2 runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: emuwasm-boxedwine-patched-webgl2
+          path: boxedwine-upstream/project/emscripten/Build/Release/
+          if-no-files-found: error
+
+  package-browser:
+    needs: [browser-port-tests, build-webgl]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           path: emuwasm
-      - name: Reuse already compiled full BoxedWine WebAssembly/WebGL runtime
+      - name: Download freshly built patched WebGL2 runtime from this run
         uses: actions/download-artifact@v4
         with:
-          repository: maxold1985/emuwasm
-          run-id: 40069975684
-          name: emuwasm-boxedwine-full-webgl
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: emuwasm-boxedwine-patched-webgl2
           path: browser-build
       - name: Integrate game launcher and verified Python localhost server
         shell: bash
@@ -55,6 +108,7 @@ jobs:
           cp emuwasm/browser_port/port.css browser-build/port.css
           cp emuwasm/browser_port/port.js browser-build/port.js
           cp emuwasm/browser_port/diagnostics.js browser-build/diagnostics.js
+          cp emuwasm/browser_port/boxedwine_webgl_pixel.inc browser-build/boxedwine_webgl_pixel.inc
           cp emuwasm/browser_port/server.py browser-build/server.py
           cp emuwasm/scripts/package_boxedwine_game.py browser-build/package_boxedwine_game.py
           # Inject early debugging before the upstream filesystem shell and WASM.
@@ -132,6 +186,7 @@ jobs:
           rm -rf browser-build/home browser-build/__pycache__
           test -s browser-build/diagnostics.js
           test -s browser-build/boxedwine.wasm
+          test -s browser-build/EMUWASM-OPENGL-BUILD.txt
           ls -lah browser-build | head -40
       - name: Publish local browser port + WebAssembly runtime (no game content)
         uses: actions/upload-artifact@v4
