@@ -32,7 +32,14 @@ class WebGLPatchTest(unittest.TestCase):
             "        EAX = GL_FUNC(pglGetError)();\n"
             "    }\n"
             "}\n"
-            "\n#define GLX_USE_GL 1\n",
+            "\n#define GLX_USE_GL 1\n"
+            "#if defined(BOXEDWINE_OPENGL) && defined(__EMSCRIPTEN__) && defined(BOXEDWINE_WEBGL_COUNTERS)\n"
+            "    glCallCounters.record(index);\n"
+            "#endif\n"
+            "    int99Callback[index](cpu);\n"
+            "void callOpenGL(CPU* cpu, U32 index) {\n"
+            "#ifdef BOXEDWINE_OPENGL\n"
+            "    //KNativeWindow::getNativeWindow()->preOpenGLCall(index);\n",
             encoding="utf-8",
         )
         (gl / "glfunctions_ext1.cpp").write_text(
@@ -44,6 +51,14 @@ class WebGLPatchTest(unittest.TestCase):
         )
         (gl / "glfunctions_ext2.cpp").write_text(
             "    GL_FUNC(ext_glRenderbufferStorage)(ARG1, ARG2, ARG3, ARG4);\n",
+            encoding="utf-8",
+        )
+        (gl / "glCounters.h").write_text(
+            "    void record(unsigned index) {\n"
+            "        if (index < count) {\n"
+            "            values[index].fetch_add(1, std::memory_order_relaxed);\n"
+            "        }\n"
+            "    }\n",
             encoding="utf-8",
         )
         return gl
@@ -65,6 +80,11 @@ class WebGLPatchTest(unittest.TestCase):
             self.assertIn('#include "emuwasm_webgl_pixel.inc"', source)
             self.assertIn("EmuWasmWebGLPixelUpload upload", source)
             self.assertIn("glGetError=0x%x", source)
+            self.assertIn("glCallCounters.recordAndIsFirst(index)", source)
+            self.assertIn("guest GL first use %s", source)
+            self.assertEqual(source.count("glCallCounters.record(index)"), 0)
+            self.assertIn("bool recordAndIsFirst(unsigned index)",
+                          (gl / "glCounters.h").read_text(encoding="utf-8"))
             fb = (gl / "glfunctions_ext1.cpp").read_text(encoding="utf-8")
             self.assertIn("glCheckFramebufferStatusEXT target=0x%x", fb)
             self.assertIn("emuwasm-webgl: glFramebufferTexture2D target=0x%x", fb)
