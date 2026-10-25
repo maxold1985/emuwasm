@@ -73,6 +73,22 @@ def validate_archive(path: Path, kind: str) -> dict:
                 if item.flag_bits & 0x1:
                     raise ValueError("ZIP criptografado nao suportado")
             warnings = []
+            if kind == "wine":
+                # BoxedWine launches /bin/wine INSIDE its guest Linux root.
+                # A ZIP of Windows DLLs, a Wine source tree, or a ZIP with
+                # a parent directory cannot satisfy this requirement.
+                if "bin/wine" not in normalized:
+                    nested = sorted(n for n in normalized if n.endswith("/bin/wine"))
+                    example = nested[0] if nested else None
+                    detail = (
+                        f"Encontrado {example!r}, mas o ZIP tem pasta extra. "
+                        "A pasta bin/ precisa ficar na raiz do ZIP."
+                        if example else
+                        "Nao existe bin/wine na raiz do ZIP. "
+                        "Este arquivo nao e um sistema Linux/Wine compativel "
+                        "com BoxedWine; DLLs Windows nao substituem /bin/wine."
+                    )
+                    raise ValueError("Wine ZIP incompativel: " + detail)
             if kind == "game":
                 if "prism3d.exe" not in normalized:
                     raise ValueError("prism3d.exe precisa estar na raiz do ZIP")
@@ -240,7 +256,16 @@ class GameHandler(BaseHTTPRequestHandler):
             archives = {}
             for kind, name in ALLOWED_UPLOADS.items():
                 p = self.server.user_data / name
-                archives[kind] = {"ready": p.is_file(), "bytes": p.stat().st_size if p.is_file() else 0}
+                info = {"ready": p.is_file(), "bytes": p.stat().st_size if p.is_file() else 0}
+                if kind == "wine" and p.is_file():
+                    # Existing user uploads may predate the stricter validator.
+                    # Check only the central directory; never extract the ZIP.
+                    try:
+                        validate_archive(p, "wine")
+                    except (ValueError, OSError) as exc:
+                        info["ready"] = False
+                        info["error"] = str(exc)
+                archives[kind] = info
             binaries = {name: (self.server.webroot / name).is_file() for name in
                         ("boxedwine.html", "boxedwine.js", "boxedwine.wasm")}
             self.reply_json(200, {"archives": archives, "runtime": binaries})
