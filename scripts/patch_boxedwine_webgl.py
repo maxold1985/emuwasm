@@ -88,6 +88,7 @@ def apply(root: Path, overlay: Path) -> None:
         "Translatef", "Scalef", "Rotatef", "Ortho", "Frustum",
         "Enable", "Disable", "AlphaFunc",
         "LoadMatrixf", "LoadMatrixd", "MultMatrixf", "MultMatrixd",
+        "GetFloatv", "GetDoublev",
     )
     original_declarations = glfunctions.read_text(encoding="utf-8").splitlines()
     for name in fixed_entrypoints:
@@ -109,14 +110,34 @@ def apply(root: Path, overlay: Path) -> None:
             glfunctions, original_line,
             f"GL_FUNCTION_CUSTOM({name}, void, {declaration.group(1)})")
 
-    # Insert before glGetTexImage; the fixed handlers require the error helper
-    # from emuwasm_gl4es_gl_functions.inc and compile only a real WebGL2
-    # implementation on Emscripten.
+    # Put the GL helpers ahead of glGetIntegerv: the desktop matrix-mode
+    # query can then consult exactly the same state that our WebGL2 shader
+    # pipeline uses, without asking WebGL for unsupported desktop enums.
     substitute_once(glcommon,
-                    "void glcommon_glGetTexImage(CPU* cpu) {",
+                    "void glcommon_glGetIntegerv(CPU* cpu) {",
                     '#include "emuwasm_gl4es_gl_functions.inc"\n'
                     '#include "emuwasm_gl4es_fixed_handlers.inc"\n\n'
-                    "void glcommon_glGetTexImage(CPU* cpu) {")
+                    "void glcommon_glGetIntegerv(CPU* cpu) {")
+
+    get_integer = """    } else {
+        MarshalReadWrite<GLint> buffer(cpu, ARG2, getSize(ARG1));
+        GL_FUNC(pglGetIntegerv)(pname, buffer.getPtr());
+    }
+}"""
+    get_integer_with_ffp = """#ifdef __EMSCRIPTEN__
+    } else if (emuwasm_ffp_is_integer_query(pname)) {
+        emuwasm_ffp_report(cpu, emuwasm_ffp_command(0, 0, 0, 0, 0, 0));
+        MarshalReadWrite<GLint> buffer(cpu, ARG2, 1);
+        if (!emuwasm_ffp_query(pname,
+                static_cast<int>(reinterpret_cast<uintptr_t>(buffer.getPtr())), 2))
+            emuwasm_gl4es_set_error(cpu, GL_INVALID_OPERATION);
+#endif
+    } else {
+        MarshalReadWrite<GLint> buffer(cpu, ARG2, getSize(ARG1));
+        GL_FUNC(pglGetIntegerv)(pname, buffer.getPtr());
+    }
+}"""
+    substitute_once(glcommon, get_integer, get_integer_with_ffp)
 
     # Ensure this header is compiled at the native and WebAssembly targets.
     # Its compatibility operations are guarded by __EMSCRIPTEN__.
