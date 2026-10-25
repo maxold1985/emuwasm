@@ -24,6 +24,8 @@ jobs:
           python3 -m py_compile browser_port/server.py browser_port/test_server.py scripts/package_boxedwine_game.py
           node --check browser_port/port.js
           node --check browser_port/diagnostics.js
+          node --check browser_port/gl_usage.js
+          node browser_port/test_gl_usage.mjs
           node browser_port/test_port.mjs
           python3 -m unittest discover -s scripts -p 'test_patch_boxedwine_webgl.py' -v
       - name: Verify browser upload security and local WASM service
@@ -109,6 +111,7 @@ jobs:
           cp emuwasm/browser_port/port.css browser-build/port.css
           cp emuwasm/browser_port/port.js browser-build/port.js
           cp emuwasm/browser_port/diagnostics.js browser-build/diagnostics.js
+          cp emuwasm/browser_port/gl_usage.js browser-build/gl_usage.js
           cp emuwasm/browser_port/boxedwine_webgl_pixel.inc browser-build/boxedwine_webgl_pixel.inc
           cp emuwasm/browser_port/server.py browser-build/server.py
           cp emuwasm/scripts/package_boxedwine_game.py browser-build/package_boxedwine_game.py
@@ -130,8 +133,9 @@ jobs:
           if len(matches) != 1:
               raise SystemExit(f'Unable to inject early WASM diagnostics: fsfs tags={len(matches)}')
           marker = matches[0]
-          html = html.replace(marker, '<script src=diagnostics.js></script>' + marker, 1)
-          assert html.index('diagnostics.js') < html.index('fsfs.js')
+          html = html.replace(marker, '<script src=diagnostics.js></script>' +
+                              '<script src=gl_usage.js></script>' + marker, 1)
+          assert html.index('diagnostics.js') < html.index('gl_usage.js') < html.index('fsfs.js')
           page.write_text(html, encoding='utf-8')
           print('Injected diagnostic bridge into minified Emscripten HTML')
           PY
@@ -186,6 +190,7 @@ jobs:
           # required by the browser and should not be redistributed.
           rm -rf browser-build/home browser-build/__pycache__
           test -s browser-build/diagnostics.js
+          test -s browser-build/gl_usage.js
           test -s browser-build/boxedwine.wasm
           test -s browser-build/EMUWASM-OPENGL-BUILD.txt
           ls -lah browser-build | head -40
