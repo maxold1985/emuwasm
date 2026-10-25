@@ -8,6 +8,7 @@ All anchors must match exactly; fail closed when upstream code has changed.
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 
@@ -36,7 +37,10 @@ def apply(root: Path, overlay: Path) -> None:
     fbo_mapper = overlay.with_name("emuwasm_gl4es_framebuffer.h")
     gl_functions = overlay.with_name("emuwasm_gl4es_gl_functions.inc")
     gl_functions_header = overlay.with_name("emuwasm_gl4es_gl_functions.h")
-    for required in (mapper, fbo_mapper, gl_functions, gl_functions_header):
+    fixed_handlers = overlay.with_name("emuwasm_gl4es_fixed_handlers.inc")
+    fixed_runtime = overlay.with_name("emuwasm_gl4es_fixed_pipeline.inc")
+    for required in (mapper, fbo_mapper, gl_functions, gl_functions_header,
+                     fixed_handlers, fixed_runtime):
         if not required.is_file():
             raise RuntimeError(f"Missing GL4ES-inspired compatibility header: {required}")
 
@@ -70,11 +74,48 @@ def apply(root: Path, overlay: Path) -> None:
             glfunctions, original_line,
             f"GL_FUNCTION_CUSTOM({function_name}, void, (GLenum mode))")
 
-    # Insert before glGetTexImage so its existing marshaller can call the
-    # WebGL2 readback helper. Native builds keep the original host GL calls.
+    # Complete first batch of real immediate-mode / fixed-function OpenGL
+    # entrypoints. Each custom x86 callback runs a WebGL2 operation or
+    # updates state consumed by a genuine WebGL2 drawArrays call.
+    # The GL4ES-inspired bridge is intentionally limited; GL lighting/fog
+    # are not claimed as implemented.
+    fixed_entrypoints = (
+        "Begin", "End", "Vertex2f", "Vertex3f", "Vertex4f",
+        "Vertex2d", "Vertex3d", "Vertex2i", "Vertex3i",
+        "Vertex2s", "Vertex3s", "Color3f", "Color4f",
+        "Color3ub", "Color4ub", "TexCoord2f", "TexCoord2d",
+        "MatrixMode", "LoadIdentity", "PushMatrix", "PopMatrix",
+        "Translatef", "Scalef", "Rotatef", "Ortho", "Frustum",
+        "Enable", "Disable", "AlphaFunc",
+        "LoadMatrixf", "LoadMatrixd", "MultMatrixf", "MultMatrixd",
+    )
+    original_declarations = glfunctions.read_text(encoding="utf-8").splitlines()
+    for name in fixed_entrypoints:
+        original_line = next(
+            (line for line in original_declarations
+             if line.startswith(f"GL_FUNCTION({name}, void,")),
+            None)
+        if original_line is None:
+            raise RuntimeError(f"Expected GL_FUNCTION({name}) declaration")
+        declaration = re.match(
+            rf"GL_FUNCTION\({re.escape(name)}, void, (\([^)]*\))",
+            original_line)
+        if declaration is None:
+            raise RuntimeError(f"Cannot parse OpenGL guest ABI for {name}")
+        if f"void glcommon_gl{name}(CPU* cpu)" not in fixed_handlers.read_text(
+                encoding="utf-8"):
+            raise RuntimeError(f"Missing fixed-function implementation for {name}")
+        substitute_once(
+            glfunctions, original_line,
+            f"GL_FUNCTION_CUSTOM({name}, void, {declaration.group(1)})")
+
+    # Insert before glGetTexImage; the fixed handlers require the error helper
+    # from emuwasm_gl4es_gl_functions.inc and compile only a real WebGL2
+    # implementation on Emscripten.
     substitute_once(glcommon,
                     "void glcommon_glGetTexImage(CPU* cpu) {",
-                    '#include "emuwasm_gl4es_gl_functions.inc"\n\n'
+                    '#include "emuwasm_gl4es_gl_functions.inc"\n'
+                    '#include "emuwasm_gl4es_fixed_handlers.inc"\n\n'
                     "void glcommon_glGetTexImage(CPU* cpu) {")
 
     # Ensure this header is compiled at the native and WebAssembly targets.
@@ -324,8 +365,10 @@ def apply(root: Path, overlay: Path) -> None:
     (gl / "emuwasm_gl4es_framebuffer.h").write_bytes(fbo_mapper.read_bytes())
     (gl / "emuwasm_gl4es_gl_functions.inc").write_bytes(gl_functions.read_bytes())
     (gl / "emuwasm_gl4es_gl_functions.h").write_bytes(gl_functions_header.read_bytes())
-    print("EmuWasm: GL4ES-inspired texture/framebuffer converters and real "
-          "glDrawBuffer, glReadBuffer, glGetTexImage handlers applied")
+    (gl / "emuwasm_gl4es_fixed_handlers.inc").write_bytes(fixed_handlers.read_bytes())
+    (gl / "emuwasm_gl4es_fixed_pipeline.inc").write_bytes(fixed_runtime.read_bytes())
+    print("EmuWasm: GL4ES-inspired WebGL2 converters, readback and "
+          f"{len(fixed_entrypoints)} real fixed-function guest GL callbacks applied")
 
 
 if __name__ == "__main__":
