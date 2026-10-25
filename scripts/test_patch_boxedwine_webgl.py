@@ -15,10 +15,27 @@ class WebGLPatchTest(unittest.TestCase):
     def make_source(self, root: Path):
         gl = root / "source/opengl"
         gl.mkdir(parents=True)
+        # The patcher must find all 33 generated callbacks and install the
+        # corresponding real native/wasm implementations.
+        fixed_names = (
+            "Begin", "End", "Vertex2f", "Vertex3f", "Vertex4f",
+            "Vertex2d", "Vertex3d", "Vertex2i", "Vertex3i",
+            "Vertex2s", "Vertex3s", "Color3f", "Color4f",
+            "Color3ub", "Color4ub", "TexCoord2f", "TexCoord2d",
+            "MatrixMode", "LoadIdentity", "PushMatrix", "PopMatrix",
+            "Translatef", "Scalef", "Rotatef", "Ortho", "Frustum",
+            "Enable", "Disable", "AlphaFunc",
+            "LoadMatrixf", "LoadMatrixd", "MultMatrixf", "MultMatrixd",
+        )
+        fixed_declarations = "".join(
+            f'GL_FUNCTION({name}, void, (), (),,,("gl{name}"))\\n'
+            for name in fixed_names
+        )
         (gl / "glfunctions.h").write_text(
             "GL_FUNCTION(TexImage2D, void, (GLenum target), (ARG1), , , (\"glTexImage2D\"))\n"
             "GL_FUNCTION(DrawBuffer, void, (GLenum mode), (ARG1),,,(\"glDrawBuffer\"))\n"
-            "GL_FUNCTION(ReadBuffer, void, (GLenum mode), (ARG1),,,(\"glReadBuffer\"))\n",
+            "GL_FUNCTION(ReadBuffer, void, (GLenum mode), (ARG1),,,(\"glReadBuffer\"))\n"
+            + fixed_declarations,
             encoding="utf-8",
         )
         (gl / "glcommon.cpp").write_text(
@@ -84,6 +101,11 @@ class WebGLPatchTest(unittest.TestCase):
             (root / "emuwasm_gl4es_framebuffer.h").write_text("// fbo fixture\n", encoding="utf-8")
             (root / "emuwasm_gl4es_gl_functions.inc").write_text("// real GL fixture\n", encoding="utf-8")
             (root / "emuwasm_gl4es_gl_functions.h").write_text("// GL helper fixture\n", encoding="utf-8")
+            for fixed_name in ("emuwasm_gl4es_fixed_handlers.inc",
+                               "emuwasm_gl4es_fixed_pipeline.inc"):
+                (root / fixed_name).write_bytes(
+                    (PATCHER.parent.parent / "browser_port" / fixed_name).read_bytes()
+                )
             patcher.apply(root, overlay)
             self.assertEqual(
                 (gl / "emuwasm_webgl_pixel.inc").read_text(encoding="utf-8"),
@@ -101,9 +123,15 @@ class WebGLPatchTest(unittest.TestCase):
             self.assertIn("GL_FUNCTION_CUSTOM(TexImage2D", callbacks)
             self.assertIn("GL_FUNCTION_CUSTOM(DrawBuffer", callbacks)
             self.assertIn("GL_FUNCTION_CUSTOM(ReadBuffer", callbacks)
+            self.assertEqual(callbacks.count("GL_FUNCTION_CUSTOM("), 36)
+            self.assertIn("GL_FUNCTION_CUSTOM(Begin", callbacks)
+            self.assertIn("GL_FUNCTION_CUSTOM(End", callbacks)
+            self.assertIn("GL_FUNCTION_CUSTOM(LoadMatrixd", callbacks)
+            self.assertIn("GL_FUNCTION_CUSTOM(MultMatrixf", callbacks)
             source = (gl / "glcommon.cpp").read_text(encoding="utf-8")
             self.assertIn('#include "emuwasm_webgl_pixel.inc"', source)
             self.assertIn('#include "emuwasm_gl4es_gl_functions.inc"', source)
+            self.assertIn('#include "emuwasm_gl4es_fixed_handlers.inc"', source)
             self.assertIn("emuwasm_gl4es_get_tex_image_rgba8", source)
             self.assertIn("emuwasm_gl4es::pack_rgba_readback", source)
             self.assertIn("emuwasm_gl4es_set_error(cpu, GL_INVALID_OPERATION)", source)
@@ -138,6 +166,11 @@ class WebGLPatchTest(unittest.TestCase):
             (root / "emuwasm_gl4es_framebuffer.h").write_text("// fbo fixture\n", encoding="utf-8")
             (root / "emuwasm_gl4es_gl_functions.inc").write_text("// real GL fixture\n", encoding="utf-8")
             (root / "emuwasm_gl4es_gl_functions.h").write_text("// GL helper fixture\n", encoding="utf-8")
+            for fixed_name in ("emuwasm_gl4es_fixed_handlers.inc",
+                               "emuwasm_gl4es_fixed_pipeline.inc"):
+                (root / fixed_name).write_bytes(
+                    (PATCHER.parent.parent / "browser_port" / fixed_name).read_bytes()
+                )
             patcher.apply(root, overlay)
             with self.assertRaisesRegex(RuntimeError, "already patched"):
                 patcher.apply(root, overlay)
