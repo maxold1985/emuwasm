@@ -63,6 +63,28 @@ assert.equal(result.functions[0].calls, "120");
 assert.equal(result.functions[1].name, "glTexImage2D");
 assert.ok(api.formatText(result).includes("glBindFramebuffer"));
 assert.ok(api.formatText(result).includes("133"));
+assert.equal(result.procQueries.requests, 0);
+
+// The exported file must now identify which actual GL function names Wine
+// queried and which were rejected, not just glProcAddressAvailable=912.
+module.emuwasmGLProcQueries = {
+    glBegin: { found: 3, missing: 0 },
+    glUnimplementedTextureFeature: { found: 0, missing: 5 },
+    glShaderSource: { found: 2, missing: 0 },
+    glChangingResult: { found: 1, missing: 1 },
+};
+const withQueries = api.readCounters();
+assert.equal(withQueries.procQueries.requests, 12);
+assert.equal(withQueries.procQueries.found, 6);
+assert.equal(withQueries.procQueries.missing, 6);
+assert.equal(withQueries.procQueries.names, 4);
+assert.equal(withQueries.procQueries.entries[0].name, "glUnimplementedTextureFeature");
+const probeDump = api.formatText(withQueries);
+assert.ok(probeDump.includes("glUnimplementedTextureFeature"));
+assert.ok(probeDump.includes("INDISPONIVEL"));
+assert.ok(probeDump.includes("glBegin"));
+assert.ok(probeDump.includes("MISTO"));
+assert.ok(probeDump.includes("Consultas identificadas: 12"));
 
 assert.equal(api.download().usedFunctions, 3);
 assert.equal(downloads.length, 1);
