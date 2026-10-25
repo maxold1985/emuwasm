@@ -25,7 +25,8 @@ def apply(root: Path, overlay: Path) -> None:
     glcommon = gl / "glcommon.cpp"
     gl_ext = gl / "glfunctions_ext1.cpp"
     gl_ext2 = gl / "glfunctions_ext2.cpp"
-    if not all(p.is_file() for p in (glfunctions, glcommon, gl_ext, gl_ext2)):
+    gl_counters = gl / "glCounters.h"
+    if not all(p.is_file() for p in (glfunctions, glcommon, gl_ext, gl_ext2, gl_counters)):
         raise RuntimeError(f"Not an upstream BoxedWine source checkout: {root}")
     if not overlay.is_file():
         raise RuntimeError(f"Missing EmuWasm shim source: {overlay}")
@@ -129,6 +130,48 @@ def apply(root: Path, overlay: Path) -> None:
     trace_call(gl_ext2, "RenderbufferStorage",
                "target=0x%x format=0x%x size=%dx%d",
                "ARG1, ARG2, ARG3, ARG4")
+
+    # Register EVERY guest GL request at the central dispatcher, including
+    # requests rejected by WebGL validation or lacking a current GL context.
+    # The old hook counted only successfully dispatched callbacks.
+    original_record = """#if defined(BOXEDWINE_OPENGL) && defined(__EMSCRIPTEN__) && defined(BOXEDWINE_WEBGL_COUNTERS)
+    glCallCounters.record(index);
+#endif
+    int99Callback[index](cpu);"""
+    substitute_once(glcommon, original_record, "    int99Callback[index](cpu);")
+
+    # Atomic fetch_add returns the previous value: exactly one thread reports
+    # the first use of a function even in multi-threaded browser builds.
+    counter_record = """    void record(unsigned index) {
+        if (index < count) {
+            values[index].fetch_add(1, std::memory_order_relaxed);
+        }
+    }"""
+    counter_replacement = counter_record + """
+
+    bool recordAndIsFirst(unsigned index) {
+        return index < count &&
+            values[index].fetch_add(1, std::memory_order_relaxed) == 0;
+    }"""
+    substitute_once(gl_counters, counter_record, counter_replacement)
+
+    dispatcher_start = """void callOpenGL(CPU* cpu, U32 index) {
+#ifdef BOXEDWINE_OPENGL
+    //KNativeWindow::getNativeWindow()->preOpenGLCall(index);"""
+    dispatcher_replacement = """void callOpenGL(CPU* cpu, U32 index) {
+#ifdef BOXEDWINE_OPENGL
+#if defined(__EMSCRIPTEN__) && defined(BOXEDWINE_WEBGL_COUNTERS)
+    if (index < int99CallbackSize && int99Callback[index]) {
+        const bool first = glCallCounters.recordAndIsFirst(index);
+        if (first) {
+            const char* name = GLCallCounters::name(index);
+            klog_fmt("emuwasm-webgl: guest GL first use %s [index=%u]",
+                     name ? name : "(unknown)", index);
+        }
+    }
+#endif
+    //KNativeWindow::getNativeWindow()->preOpenGLCall(index);"""
+    substitute_once(glcommon, dispatcher_start, dispatcher_replacement)
 
     (gl / "emuwasm_webgl_pixel.inc").write_bytes(overlay.read_bytes())
     print("EmuWasm: OpenGL BGRA/BGR -> WebGL2 pixel shim and GL diagnostics applied")
