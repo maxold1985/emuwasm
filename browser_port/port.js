@@ -75,7 +75,7 @@ function syncLaunch() {
         !rootReady || !gameReady || !runtimeReady;
     if (!requestBusy) {
         byId("launch-state").textContent = !supported
-            ? "Use Chrome/Edge em http://127.0.0.1:8000 com WebGL ativo."
+            ? "Use Chrome/Edge em " + location.origin + " com WebGL ativo."
             : (!rootReady || !gameReady)
                 ? "Importe o ZIP do Wine e o ZIP do jogo."
                 : (!runtimeReady)
@@ -145,10 +145,11 @@ function buildBoxedwineURL() {
     // These parameters are consumed by the real upstream boxedwine-shell.js:
     // rootBase / root => Wine root ZIP; appBase / app => game ZIP;
     // registry => Wine XP and renderer settings, p => EXE inside ZIP.
-    // storage=idb keeps a separate guest Wine prefix and save data.
+    // storage=memory avoids IndexedDB startup hangs; idb persists save data.
     const graphics = byId("graphics").value;
     const resolution = byId("resolution").value;
     const cpu = byId("cpu").value;
+    const storage = byId("storage").value;
     if (!["gl", "gdi"].includes(graphics)) {
         throw new Error("Renderizador invalido.");
     }
@@ -158,6 +159,9 @@ function buildBoxedwineURL() {
     }
     if (!["", "p2", "p3"].includes(cpu)) {
         throw new Error("CPU invalida.");
+    }
+    if (!["memory", "idb"].includes(storage)) {
+        throw new Error("Modo de armazenamento invalido.");
     }
     const target = new URL("./boxedwine.html", location.href);
     const params = target.searchParams;
@@ -171,8 +175,8 @@ function buildBoxedwineURL() {
     params.set("sound", byId("sound").checked ? "true" : "false");
     params.set("auto", "true");
     params.set("desktop", "false");
-    params.set("storage", "idb");
-    params.set("rootfs", "idb");
+    params.set("storage", storage);
+    params.set("rootfs", storage);
     params.set("storageKey", "18wos-pedal-to-the-metal");
     if (cpu) {
         params.set("cpu", cpu);
