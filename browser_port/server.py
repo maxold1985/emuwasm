@@ -26,6 +26,7 @@ READ_CHUNK = 1024 * 1024
 MAX_DIAGNOSTIC_POST = 24 * 1024
 MAX_DIAGNOSTIC_LOG_BYTES = 1024 * 1024
 ALLOWED_UPLOADS = {"wine": "boxedwine.zip", "game": "prism3d.zip"}
+WINE_ARTIFACT = "boxedwine-linux-i386-wine11-rootfs.zip"
 MIME = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
@@ -108,6 +109,56 @@ def validate_archive(path: Path, kind: str) -> dict:
         raise ValueError("O arquivo selecionado nao e um ZIP valido") from exc
 
 
+
+def import_wine_artifact(artifact: Path, destination: Path) -> bool:
+    """Unwrap the GitHub Actions artifact (outer ZIP containing boxedwine.zip).
+
+    Only the exact expected member is accepted; never extract arbitrary paths.
+    """
+    if not artifact.is_file():
+        return False
+    with ZipFile(artifact) as outer:
+        entries = [member for member in outer.infolist() if not member.is_dir()]
+        if len(entries) != 1 or entries[0].filename != "boxedwine.zip":
+            raise ValueError("Artefato Wine invalido: esperado somente boxedwine.zip")
+        member = entries[0]
+        if member.file_size > MAX_UPLOAD:
+            raise ValueError("Wine ZIP excede 3 GiB")
+        fd, temporary = tempfile.mkstemp(prefix="wine-artifact-", suffix=".zip",
+                                        dir=destination.parent)
+        tmp = Path(temporary)
+        try:
+            with os.fdopen(fd, "wb") as target, outer.open(member) as source:
+                shutil.copyfileobj(source, target, READ_CHUNK)
+            validate_archive(tmp, "wine")
+            os.replace(tmp, destination)
+        finally:
+            tmp.unlink(missing_ok=True)
+    return True
+
+
+def ensure_local_wine(user_data: Path) -> str | None:
+    """Import a previously downloaded Actions artifact when Wine is requested.
+
+    No remote requests or GitHub credentials: the artifact must be on disk.
+    """
+    destination = user_data / ALLOWED_UPLOADS["wine"]
+    if destination.is_file():
+        try:
+            validate_archive(destination, "wine")
+            return None
+        except (ValueError, OSError):
+            pass
+    artifact = user_data / WINE_ARTIFACT
+    if not artifact.is_file():
+        return None
+    try:
+        import_wine_artifact(artifact, destination)
+        return None
+    except (ValueError, OSError, BadZipFile) as exc:
+        return f"Falha ao importar artefato local Wine: {exc}"
+
+
 class GameServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -175,6 +226,8 @@ class GameHandler(BaseHTTPRequestHandler):
             return
         route = self.parse_route()
         # Preflight requests must not stream the full ZIP into the browser.
+        if route == "/user-content/boxedwine.zip":
+            ensure_local_wine(self.server.user_data)
         file = self.safe_static_path(route)
         if file is None or not file.is_file():
             self.send_response(404)
@@ -253,10 +306,13 @@ class GameHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         if route == "/api/status":
+            wine_import_error = ensure_local_wine(self.server.user_data)
             archives = {}
             for kind, name in ALLOWED_UPLOADS.items():
                 p = self.server.user_data / name
                 info = {"ready": p.is_file(), "bytes": p.stat().st_size if p.is_file() else 0}
+                if kind == "wine" and wine_import_error:
+                    info["error"] = wine_import_error
                 if kind == "wine" and p.is_file():
                     # Existing user uploads may predate the stricter validator.
                     # Check only the central directory; never extract the ZIP.
@@ -273,6 +329,8 @@ class GameHandler(BaseHTTPRequestHandler):
         if route.startswith("/api/"):
             self.reply_json(404, {"error": "Rota desconhecida"})
             return
+        if route == "/user-content/boxedwine.zip":
+            ensure_local_wine(self.server.user_data)
         file = self.safe_static_path(route)
         if file is None or not file.is_file():
             self.send_error(404, "Arquivo nao encontrado")
