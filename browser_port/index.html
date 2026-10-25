@@ -73,11 +73,17 @@
             <option value="p2">Pentium II</option>
           </select>
         </label>
+        <label for="storage">Armazenamento do Wine
+          <select id="storage">
+            <option value="memory" selected>Memória RAM (diagnóstico, não salva)</option>
+            <option value="idb">IndexedDB (persistir configurações)</option>
+          </select>
+        </label>
         <label class="check-option"><input id="sound" type="checkbox"> Ativar áudio</label>
       </div>
       <button type="button" class="primary" id="launch" disabled>Iniciar 18 Wheels of Steel no navegador</button>
       <p id="launch-state" role="status">Importe os dois arquivos para habilitar.</p>
-      <p class="hint">O Wine é configurado como Windows XP (perfil separado). Controles: teclado e mouse; clique na janela do emulador para capturar o cursor quando necessário.</p>
+      <p class="hint">O modo RAM evita possíveis bloqueios do IndexedDB durante o primeiro teste, mas não conserva alterações/saves após fechar o navegador. Para persistir, selecione IndexedDB. O Wine é configurado como Windows XP; clique na janela para capturar o mouse quando necessário.</p>
     </section>
     <section class="card muted">
       <h2>Limitações atuais</h2>
