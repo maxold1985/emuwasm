@@ -40,6 +40,18 @@ class WebGLPatchTest(unittest.TestCase):
             encoding="utf-8",
         )
         (gl / "glcommon.cpp").write_text(
+            "static bool isOpenGLProcAddressAvailable(const char* name) {\n"
+            "#if defined(__EMSCRIPTEN__)\n"
+            "    if (boxedwineIsUnsupportedEmscriptenGLProcAddress(name)) {\n"
+            "        return false;\n"
+            "    }\n"
+            "    // This core entry uses our typed WebGL wrapper\n"
+            "#endif\n"
+            "    return false;\n"
+            "}\n"
+            "void glcommon_glProcAddressAvailable(CPU* cpu) {\n"
+            "    EAX = isOpenGLProcAddressAvailable(marshalsz(cpu, ARG1)) ? 1 : 0;\n"
+            "}\n"
             "void glcommon_glGetIntegerv(CPU* cpu) {\n"
             "    GLenum pname = ARG1;\n"
             "    if (pname == GL_NUM_EXTENSIONS) {\n"
@@ -153,6 +165,14 @@ class WebGLPatchTest(unittest.TestCase):
             self.assertIn("EmuWasmWebGLPixelUpload upload", source)
             self.assertIn("glGetError=0x%x", source)
             self.assertIn("glCallCounters.recordAndIsFirst(index)", source)
+            self.assertIn("static bool emuwasmHasPatchedGLProc", source)
+            self.assertIn('if (!strcmp(name, "glBegin"))', source)
+            self.assertIn("int99Callback[Begin] != nullptr", source)
+            self.assertIn('if (!strcmp(name, "glGetDoublev"))', source)
+            self.assertIn('emuwasmRecordProcQuery(name, EAX);', source)
+            self.assertIn("Module['emuwasmGLProcQueries']", source)
+            self.assertIn("if (emuwasmHasPatchedGLProc(name))", source)
+            self.assertIn("boxedwineIsUnsupportedEmscriptenGLProcAddress(name)", source)
             self.assertIn("guest GL first use %s", source)
             self.assertEqual(source.count("glCallCounters.record(index)"), 0)
             self.assertIn("bool recordAndIsFirst(unsigned index)",
