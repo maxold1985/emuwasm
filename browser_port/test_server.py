@@ -14,7 +14,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from zipfile import ZipFile
 
-from server import GameServer, validate_archive
+from server import GameServer, validate_archive, import_wine_artifact, ensure_local_wine, WINE_ARTIFACT
 
 
 def make_zip(destination: Path, entries: dict[str, bytes]) -> None:
@@ -80,6 +80,41 @@ class ArchiveValidationTest(unittest.TestCase):
         self.path.write_bytes(b"not a ZIP")
         with self.assertRaises(ValueError):
             validate_archive(self.path, "wine")
+
+
+
+class WineArtifactImportTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.folder = Path(self.temp.name)
+        self.artifact = self.folder / WINE_ARTIFACT
+        self.wine = self.folder / "boxedwine.zip"
+
+    def test_auto_import_actions_artifact(self) -> None:
+        from zipfile import ZIP_DEFLATED
+        from io import BytesIO
+        inner = BytesIO()
+        with ZipFile(inner, "w", ZIP_DEFLATED) as z:
+            z.writestr("bin/wine", b"guest")
+        with ZipFile(self.artifact, "w") as z:
+            z.writestr("boxedwine.zip", inner.getvalue())
+        self.assertIsNone(ensure_local_wine(self.folder))
+        self.assertEqual(validate_archive(self.wine, "wine")["files"], 1)
+
+    def test_reject_other_artifact_member(self) -> None:
+        make_zip(self.artifact, {"other.zip": b"bad"})
+        with self.assertRaisesRegex(ValueError, "esperado"):
+            import_wine_artifact(self.artifact, self.wine)
+        self.assertFalse(self.wine.exists())
+
+    def test_existing_valid_wine_takes_precedence(self) -> None:
+        make_zip(self.wine, {"bin/wine": b"existing"})
+        make_zip(self.artifact, {"wrong.txt": b"bad"})
+        self.assertIsNone(ensure_local_wine(self.folder))
+        with ZipFile(self.wine) as z:
+            self.assertEqual(z.read("bin/wine"), b"existing")
+
 
 
 class LocalHTTPTest(unittest.TestCase):
