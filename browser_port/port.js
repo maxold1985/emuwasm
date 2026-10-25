@@ -47,8 +47,9 @@ async function loadStatus() {
     for (const kind of ["wine", "game"]) {
         const item = status.archives[kind];
         const ready = item && item.ready;
-        byId(kind + "-state").textContent = ready
-            ? "Importado: " + readableBytes(item.bytes) : "Ainda nao importado.";
+        byId(kind + "-state").textContent = item && item.error
+            ? "ERRO: " + item.error
+            : ready ? "Importado: " + readableBytes(item.bytes) : "Ainda nao importado.";
     }
     syncLaunch();
 }
@@ -77,7 +78,9 @@ function syncLaunch() {
         byId("launch-state").textContent = !supported
             ? "Use Chrome/Edge em " + location.origin + " com WebGL ativo."
             : (!rootReady || !gameReady)
-                ? "Importe o ZIP do Wine e o ZIP do jogo."
+                ? (status.archives.wine && status.archives.wine.error
+                    ? "Wine invalido: " + status.archives.wine.error
+                    : "Importe o ZIP do Wine e o ZIP do jogo.")
                 : (!runtimeReady)
                     ? "Ainda nao ha runtime WASM neste pacote."
                     : "Arquivos carregados. Pode tentar iniciar.";
