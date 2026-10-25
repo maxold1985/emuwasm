@@ -89,10 +89,15 @@ struct EmuWasmWebGLPixelUpload {
                                     oldAlignment * oldAlignment;
         const std::uint64_t outputBytes =
             static_cast<std::uint64_t>(width) * height * channels;
+        if (rowRaw > maxBytes || pitch > maxBytes ||
+            (static_cast<std::uint64_t>(oldSkipRows) + height - 1) > maxBytes / pitch ||
+            (static_cast<std::uint64_t>(oldSkipPixels) + width) > maxBytes / channels)
+            return;
         const std::uint64_t finalSourceByte =
             (static_cast<std::uint64_t>(oldSkipRows) + height - 1) * pitch +
             (static_cast<std::uint64_t>(oldSkipPixels) + width) * channels;
-        if (!outputBytes || outputBytes > maxBytes || finalSourceByte > maxBytes)
+        if (!outputBytes || outputBytes > maxBytes ||
+            pitch > maxBytes || finalSourceByte > maxBytes)
             return;
 
         converted.resize(static_cast<size_t>(outputBytes));
@@ -156,7 +161,7 @@ void glcommon_glTexImage2D(CPU* cpu) {
     GLenum type = ARG8;
     const bool usingPbo = PIXEL_UNPACK_BUFFER();
     const GLvoid* pixels = usingPbo
-        ? reinterpret_cast<const GLvoid*>(static_cast<uintptr_t>(pARG9))
+        ? (GLvoid*)pARG9
         : marshalPixels(cpu, 2, width, height, 1, format, type, ARG9);
 
 #ifdef __EMSCRIPTEN__
@@ -178,6 +183,10 @@ void glcommon_glTexImage2D(CPU* cpu) {
     if (internalFormat == 0x80E1)
         internalFormat = GL_RGBA;
     else if (internalFormat == 0x80E0)
+        internalFormat = GL_RGB;
+    else if (internalFormat == 4)
+        internalFormat = GL_RGBA; // Legacy GL component-count internal format
+    else if (internalFormat == 3)
         internalFormat = GL_RGB;
 #endif
 
