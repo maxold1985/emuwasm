@@ -12,6 +12,7 @@ on:
       - 'scripts/test_gl4es_formats.cpp'
       - 'scripts/test_gl4es_framebuffer.cpp'
       - 'scripts/test_gl4es_gl_functions.cpp'
+      - 'scripts/test_gl4es_webgl_bridge.mjs'
 
 permissions:
   contents: read
@@ -37,6 +38,7 @@ jobs:
           /tmp/test_gl4es_framebuffer
           c++ -std=c++11 -Wall -Wextra -Werror -Ibrowser_port scripts/test_gl4es_gl_functions.cpp -o /tmp/test_gl4es_gl_functions
           /tmp/test_gl4es_gl_functions
+          node scripts/test_gl4es_webgl_bridge.mjs
       - name: Verify browser upload security and local WASM service
         run: |
           python3 -m unittest discover -s browser_port -p 'test_*.py' -v
