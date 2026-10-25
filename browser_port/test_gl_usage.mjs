@@ -45,11 +45,11 @@ const document = {
         return a;
     },
 };
-const URL = {
+const mockedURL = {
     createObjectURL() { return "blob:fake"; },
     revokeObjectURL() {},
 };
-const vm = createContext({window, document, URL, Blob});
+const vm = createContext({window, document, URL: mockedURL, Blob});
 runInContext(source, vm);
 const api = window.EmuWasmGLUsage;
 assert.ok(api);
