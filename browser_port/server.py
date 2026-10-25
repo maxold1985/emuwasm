@@ -313,6 +313,36 @@ class GameHandler(BaseHTTPRequestHandler):
             self.common_headers()
             self.end_headers()
             return
+        if route == "/api/wine-inspect":
+            error = ensure_local_wine(self.server.user_data)
+            path = self.server.user_data / ALLOWED_UPLOADS["wine"]
+            if not path.is_file():
+                self.reply_json(404, {"error": error or "boxedwine.zip nao encontrado"})
+                return
+            try:
+                with ZipFile(path) as archive:
+                    names = archive.namelist()
+                    wine = archive.getinfo("bin/wine") if "bin/wine" in names else None
+                    header = archive.open(wine).read(20) if wine else b""
+                    nested = [n for n in names if n.endswith("/bin/wine")][:10]
+                    self.reply_json(200, {
+                        "bytes": path.stat().st_size,
+                        "entries": len(names),
+                        "binWinePresent": wine is not None,
+                        "binWineSize": wine.file_size if wine else 0,
+                        "binWineMagic": header[:4].hex(),
+                        "binWineElfI386": (
+                            len(header) >= 20 and header[:4] == b"\x7fELF"
+                            and header[4] == 1 and header[5] == 1
+                            and header[18:20] == b"\x03\x00"
+                        ),
+                        "nestedWinePaths": nested,
+                        "sampleEntries": names[:15],
+                        "importError": error,
+                    })
+            except (OSError, BadZipFile, KeyError, ValueError) as exc:
+                self.reply_json(422, {"error": str(exc)})
+            return
         if route == "/api/status":
             wine_import_error = ensure_local_wine(self.server.user_data)
             archives = {}
