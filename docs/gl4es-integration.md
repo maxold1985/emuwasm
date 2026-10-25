@@ -34,6 +34,40 @@ guest OpenGL functions and Emscripten remains responsible for WebGL2.
 - `scripts/test_gl4es_framebuffer.cpp` verifies 16 format conversions and
   no-op cases, including flagging approximations.
 
+## Implemented guest OpenGL entry points
+
+Unlike the format adapters above, the following **execute actual WebGL2
+operations** via Emscripten's JavaScript bridge:
+
+| Guest OpenGL entry point | Real WebGL2 operation | Current coverage |
+| --- | --- | --- |
+| `glDrawBuffer` | `drawBuffers([mode])` | Default BACK/NONE and FBO color attachments; FRONT maps to BACK (logged approximation) |
+| `glReadBuffer` | `readBuffer(mode)` | Default BACK/NONE and FBO color attachments; FRONT maps to BACK (logged approximation) |
+| `glGetTexImage` | Temporary color framebuffer + `readPixels` | Bound 2D, color-renderable texture levels, RGBA/RGB/BGRA/BGR unsigned-byte output |
+
+Implementation:
+- `browser_port/emuwasm_gl4es_gl_functions.inc`: real BoxedWine
+  `glcommon_glDrawBuffer` and `glcommon_glReadBuffer` handlers;
+  WebGL2 framebuffer readback bridge.
+- `browser_port/emuwasm_gl4es_gl_functions.h`: tested buffer selection
+  and RGBA8-to-guest-format packing functions.
+- The `glcommon_glGetTexImage` handler is replaced with framebuffer readback
+  only for supported color formats; unsupported operations report a guest GL
+  error, not a fabricated result. Its packing honors PACK_ALIGNMENT,
+  PACK_ROW_LENGTH, PACK_SKIP_ROWS and PACK_SKIP_PIXELS.
+- The temporary framebuffer and pixel-store state are restored after the
+  read. A bound PACK PBO, texture arrays, depth textures and compressed or
+  floating-point output remain unsupported. No WebGL shader pipeline or
+  immediate-mode rendering is added by this change.
+- `scripts/test_gl4es_gl_functions.cpp` runs native unit tests for real
+  buffer-selection semantics and readback pixel packing. The WASM build tests
+  that the actual OpenGL dispatch functions are linkable.
+
+Logs use `emuwasm-gl4es: glGetTexImage`,
+`emuwasm-gl4es: glDrawBuffer` and `emuwasm-gl4es: glReadBuffer`.
+This subset is original adaptation code inspired by GL4ES, **not** an
+integration or build of upstream libGL4ES.
+
 ## Renderbuffer compatibility
 
 | Guest internal format | WebGL2 renderbuffer format | Notes |
