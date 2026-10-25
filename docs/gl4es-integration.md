@@ -23,12 +23,40 @@ guest OpenGL functions and Emscripten remains responsible for WebGL2.
 - `scripts/patch_boxedwine_webgl.py` installs the adapter into the active
   upstream BoxedWine OpenGL dispatcher.
 - `scripts/test_gl4es_formats.cpp` runs native C++ regression tests in CI.
+- `browser_port/emuwasm_gl4es_framebuffer.h` normalizes a limited set of
+  legacy renderbuffer internal formats to WebGL2-sized RGB(A), depth, stencil
+  and depth-stencil formats. It is inspired by GL4ES `src/gl/framebuffers.c`,
+  specifically `gl4es_glRenderbufferStorage`.
+- `scripts/patch_boxedwine_webgl.py` intercepts real BoxedWine
+  `glRenderbufferStorage`, `glRenderbufferStorageEXT`,
+  `glRenderbufferStorageMultisample`, and their EXT variant. It does not
+  change the sample count or force framebuffer completeness.
+- `scripts/test_gl4es_framebuffer.cpp` verifies 16 format conversions and
+  no-op cases, including flagging approximations.
+
+## Renderbuffer compatibility
+
+| Guest internal format | WebGL2 renderbuffer format | Notes |
+| --- | --- | --- |
+| GL_RGB / GL_RGBA | GL_RGB8 / GL_RGBA8 | Sized equivalents |
+| GL_DEPTH_COMPONENT | GL_DEPTH_COMPONENT16 | Explicit depth storage |
+| GL_DEPTH_STENCIL | GL_DEPTH24_STENCIL8 | Combined depth/stencil storage |
+| GL_STENCIL_INDEX | GL_STENCIL_INDEX8 | Explicit stencil storage |
+| GL_RGB5 / GL_R3_G3_B2 | GL_RGB565 | Precision approximation |
+| GL_RGB4 | GL_RGBA4 | Adds an alpha channel |
+| GL_DEPTH_COMPONENT32 | GL_DEPTH_COMPONENT24 | Precision approximation |
+
+Unsupported and already-sized formats pass through unchanged. Approximate
+mappings are logged with `approximate=1`. These decisions do not create
+secondary renderbuffers or emulate depth/stencil attachment combinations.
+A `GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT` status still comes from the host,
+including when WineD3D deliberately probes an unsupported combination.
 
 ## Not yet implemented
 
 This does **not** integrate GL4ES fixed-function pipeline emulation, shader
-conversion, GLX, compressed textures, depth/stencil conversion, or framebuffer
-attachment emulation. No unsupported GL feature is falsely advertised.
+conversion, GLX, compressed textures, general depth/stencil data conversion,
+or framebuffer attachment emulation. No unsupported GL feature is falsely advertised.
 
 A future full GL4ES integration would need to route BoxedWine's generated
 OpenGL entry points into GL4ES's context-bound implementation and test that
