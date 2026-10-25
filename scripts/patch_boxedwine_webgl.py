@@ -34,7 +34,9 @@ def apply(root: Path, overlay: Path) -> None:
     # missing. Both modules are independent C++11 headers, not GL4ES binaries.
     mapper = overlay.with_name("emuwasm_gl4es_formats.h")
     fbo_mapper = overlay.with_name("emuwasm_gl4es_framebuffer.h")
-    for required in (mapper, fbo_mapper):
+    gl_functions = overlay.with_name("emuwasm_gl4es_gl_functions.inc")
+    gl_functions_header = overlay.with_name("emuwasm_gl4es_gl_functions.h")
+    for required in (mapper, fbo_mapper, gl_functions, gl_functions_header):
         if not required.is_file():
             raise RuntimeError(f"Missing GL4ES-inspired compatibility header: {required}")
 
@@ -53,11 +55,93 @@ def apply(root: Path, overlay: Path) -> None:
               "GLenum type, const GLvoid* pixels))")
     substitute_once(glfunctions, original, custom)
 
+    # These are real OpenGL guest handlers, not format translators. The
+    # desktop counterparts are absent from WebGL2, so dispatch directly to
+    # our WebGL2 drawBuffers/readBuffer/texture-FBO readback implementations.
+    for function_name in ("DrawBuffer", "ReadBuffer"):
+        original_line = next(
+            (line for line in glfunctions.read_text(encoding="utf-8").splitlines()
+             if line.startswith(f"GL_FUNCTION({function_name}, void,")),
+            None,
+        )
+        if original_line is None:
+            raise RuntimeError(f"{function_name} declaration missing/already patched")
+        substitute_once(
+            glfunctions, original_line,
+            f"GL_FUNCTION_CUSTOM({function_name}, void, (GLenum mode))")
+
+    # Insert before glGetTexImage so its existing marshaller can call the
+    # WebGL2 readback helper. Native builds keep the original host GL calls.
+    substitute_once(glcommon,
+                    "void glcommon_glGetTexImage(CPU* cpu) {",
+                    '#include "emuwasm_gl4es_gl_functions.inc"\n\n'
+                    "void glcommon_glGetTexImage(CPU* cpu) {")
+
     # Ensure this header is compiled at the native and WebAssembly targets.
     # Its compatibility operations are guarded by __EMSCRIPTEN__.
     include = '#include "emuwasm_webgl_pixel.inc"\n\n'
     substitute_once(glcommon, "void glcommon_glTexSubImage2D(CPU* cpu) {",
                     include + "void glcommon_glTexSubImage2D(CPU* cpu) {")
+
+    # glGetTexImage is absent from WebGL2. Read a bound 2D color texture via
+    # a temporary framebuffer (real gl.readPixels), then convert / pack data
+    # into guest memory using the same BoxedWine marshalling contract.
+    teximage_read = "    GL_FUNC(pglGetTexImage)(target, level, format, type, pixels.getPtr());"
+    teximage_emulated = """#ifdef __EMSCRIPTEN__
+    // Only 2D, unsigned-byte, color-renderable textures are supported here.
+    // Unsupported paths must report an error, not pretend that a read worked.
+    const std::uint64_t needed = static_cast<std::uint64_t>(width) *
+                                 static_cast<std::uint64_t>(height) * 4ull;
+    if (target == GL_TEXTURE_2D && level >= 0 &&
+        width > 0 && height > 0 && !PIXEL_PACK_BUFFER() &&
+        type == GL_UNSIGNED_BYTE &&
+        emuwasm_gl4es::pixel_channels(format) != 0 &&
+        needed <= 64ull * 1024 * 1024) {
+        GLint alignment = 4, rowLength = 0, skipRows = 0, skipPixels = 0;
+        GL_FUNC(pglGetIntegerv)(GL_PACK_ALIGNMENT, &alignment);
+        GL_FUNC(pglGetIntegerv)(GL_PACK_ROW_LENGTH, &rowLength);
+        GL_FUNC(pglGetIntegerv)(GL_PACK_SKIP_ROWS, &skipRows);
+        GL_FUNC(pglGetIntegerv)(GL_PACK_SKIP_PIXELS, &skipPixels);
+        if ((alignment == 1 || alignment == 2 ||
+             alignment == 4 || alignment == 8) &&
+            rowLength >= 0 && skipRows >= 0 && skipPixels >= 0) {
+            std::vector<U8> rgba(static_cast<size_t>(needed));
+            if (emuwasm_gl4es_get_tex_image_rgba8(
+                    level, width, height,
+                    static_cast<int>(reinterpret_cast<uintptr_t>(rgba.data())),
+                    static_cast<int>(needed))) {
+                U8* destination = static_cast<U8*>(pixels.getPtr());
+                if (emuwasm_gl4es::pack_rgba_readback(
+                        rgba.data(), rgba.size(),
+                        static_cast<std::uint32_t>(width),
+                        static_cast<std::uint32_t>(height),
+                        format, static_cast<std::uint32_t>(alignment),
+                        static_cast<std::uint32_t>(rowLength),
+                        static_cast<std::uint32_t>(skipRows),
+                        static_cast<std::uint32_t>(skipPixels),
+                        destination, pixels.getByteLength())) {
+                    thread_local unsigned readReports = 0;
+                    if (readReports++ < 32)
+                        klog_fmt("emuwasm-gl4es: glGetTexImage texture2D "
+                                 "level=%d size=%dx%d format=0x%x data=%u",
+                                 level, width, height, format,
+                                 pixels.getByteLength());
+                    return;
+                }
+            }
+        }
+    }
+    emuwasm_gl4es_set_error(cpu, GL_INVALID_OPERATION);
+    thread_local unsigned unsupportedReads = 0;
+    if (unsupportedReads++ < 32)
+        klog_fmt("emuwasm-gl4es: glGetTexImage unsupported target=0x%x "
+                 "level=%d size=%dx%d format=0x%x type=0x%x pbo=%d",
+                 target, level, width, height, format, type,
+                 static_cast<int>(PIXEL_PACK_BUFFER()));
+#else
+    GL_FUNC(pglGetTexImage)(target, level, format, type, pixels.getPtr());
+#endif"""
+    substitute_once(glcommon, teximage_read, teximage_emulated)
 
     # Existing TexSubImage2D already repacks non-contiguous rows. The shim
     # runs after that logic, then restores the temporary unpack state.
@@ -238,7 +322,10 @@ def apply(root: Path, overlay: Path) -> None:
     (gl / "emuwasm_webgl_pixel.inc").write_bytes(overlay.read_bytes())
     (gl / "emuwasm_gl4es_formats.h").write_bytes(mapper.read_bytes())
     (gl / "emuwasm_gl4es_framebuffer.h").write_bytes(fbo_mapper.read_bytes())
-    print("EmuWasm: BGRA/BGR, GL4ES-inspired textures and framebuffer formats applied")
+    (gl / "emuwasm_gl4es_gl_functions.inc").write_bytes(gl_functions.read_bytes())
+    (gl / "emuwasm_gl4es_gl_functions.h").write_bytes(gl_functions_header.read_bytes())
+    print("EmuWasm: GL4ES-inspired texture/framebuffer converters and real "
+          "glDrawBuffer, glReadBuffer, glGetTexImage handlers applied")
 
 
 if __name__ == "__main__":
