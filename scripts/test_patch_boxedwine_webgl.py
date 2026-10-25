@@ -28,7 +28,7 @@ class WebGLPatchTest(unittest.TestCase):
             "LoadMatrixf", "LoadMatrixd", "MultMatrixf", "MultMatrixd",
         )
         fixed_declarations = "".join(
-            f'GL_FUNCTION({name}, void, (), (),,,("gl{name}"))\\n'
+            f'GL_FUNCTION({name}, void, (), (),,,("gl{name}"))\n'
             for name in fixed_names
         )
         (gl / "glfunctions.h").write_text(
