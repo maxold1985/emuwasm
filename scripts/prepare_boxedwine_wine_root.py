@@ -59,6 +59,9 @@ def prepare(source: Path, destination: Path) -> str:
                 for member in archive.infolist():
                     if member.filename.startswith("/") or ".." in member.filename.split("/"):
                         raise ValueError("ZIP contem caminho inseguro")
+                    if member.is_dir():
+                        output.writestr(member, b"")
+                        continue
                     with archive.open(member) as reader, output.open(member, "w") as writer:
                         while True:
                             data = reader.read(CHUNK)
