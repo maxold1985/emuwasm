@@ -17,6 +17,7 @@ const memory = new ArrayBuffer(4096);
 const HEAPF32 = new Float32Array(memory);
 const HEAPF64 = new Float64Array(memory);
 const HEAPU8 = new Uint8Array(memory);
+const HEAP32 = new Int32Array(memory);
 const events = [];
 let currentProgram = {id:"original-program"};
 let currentBuffer = {id:"original-buffer"};
@@ -83,7 +84,7 @@ const Module = {};
 const warnings = [];
 const context = {
     GL:{currentContext:{GLctx:gl}},
-    Module, HEAPF64, HEAPF32, HEAPU8,
+    Module, HEAPF64, HEAPF32, HEAP32, HEAPU8,
     console:{warn:(...args)=>warnings.push(args.join(" "))},
 };
 const executor = runInNewContext(
