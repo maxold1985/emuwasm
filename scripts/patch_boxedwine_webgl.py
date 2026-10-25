@@ -30,6 +30,13 @@ def apply(root: Path, overlay: Path) -> None:
         raise RuntimeError(f"Not an upstream BoxedWine source checkout: {root}")
     if not overlay.is_file():
         raise RuntimeError(f"Missing EmuWasm shim source: {overlay}")
+    # Fail before modifying upstream files when either compatibility header is
+    # missing. Both modules are independent C++11 headers, not GL4ES binaries.
+    mapper = overlay.with_name("emuwasm_gl4es_formats.h")
+    fbo_mapper = overlay.with_name("emuwasm_gl4es_framebuffer.h")
+    for required in (mapper, fbo_mapper):
+        if not required.is_file():
+            raise RuntimeError(f"Missing GL4ES-inspired compatibility header: {required}")
 
     # Generated GL_FUNCTION invokes glTexImage2D without interception.
     # CUSTOM routes the same guest int99 function to our real C++ handler.
@@ -130,6 +137,61 @@ def apply(root: Path, overlay: Path) -> None:
     trace_call(gl_ext2, "RenderbufferStorage",
                "target=0x%x format=0x%x size=%dx%d",
                "ARG1, ARG2, ARG3, ARG4")
+    trace_call(gl_ext2, "RenderbufferStorageEXT",
+               "target=0x%x format=0x%x size=%dx%d",
+               "ARG1, ARG2, ARG3, ARG4")
+    trace_call(gl_ext2, "RenderbufferStorageMultisample",
+               "target=0x%x samples=%d format=0x%x size=%dx%d",
+               "ARG1, ARG2, ARG3, ARG4, ARG5")
+    trace_call(gl_ext2, "RenderbufferStorageMultisampleEXT",
+               "target=0x%x samples=%d format=0x%x size=%dx%d",
+               "ARG1, ARG2, ARG3, ARG4, ARG5")
+    trace_call(gl_ext, "FramebufferTexture2DEXT",
+               "target=0x%x attach=0x%x texTarget=0x%x texture=%u level=%d",
+               "ARG1, ARG2, ARG3, ARG4, ARG5")
+    trace_call(gl_ext, "FramebufferRenderbufferEXT",
+               "target=0x%x attach=0x%x rbTarget=0x%x renderbuffer=%u",
+               "ARG1, ARG2, ARG3, ARG4")
+
+    # Integrate the GL4ES-inspired renderbuffer format adapter at the four
+    # real BoxedWine entry points, rather than faking framebuffer status.
+    # WebGL2 accepts explicitly sized color/depth/stencil renderbuffers.
+    substitute_once(gl_ext2, "void glcommon_glRenderbufferStorage(CPU* cpu) {",
+                    '#ifdef __EMSCRIPTEN__\n'
+                    '#include "emuwasm_gl4es_framebuffer.h"\n'
+                    '#endif\n\n'
+                    "void glcommon_glRenderbufferStorage(CPU* cpu) {")
+
+    for name, call_args in (
+        ("RenderbufferStorage", "ARG1, ARG2, ARG3, ARG4"),
+        ("RenderbufferStorageEXT", "ARG1, ARG2, ARG3, ARG4"),
+        ("RenderbufferStorageMultisample", "ARG1, ARG2, ARG3, ARG4, ARG5"),
+        ("RenderbufferStorageMultisampleEXT", "ARG1, ARG2, ARG3, ARG4, ARG5"),
+    ):
+        original_call = f"    GL_FUNC(ext_gl{name})({call_args});"
+        if "Multisample" in name:
+            translated_call = (f"    GL_FUNC(ext_gl{name})(ARG1, ARG2, "
+                               "static_cast<GLenum>(rbMapped.internal), ARG4, ARG5);")
+            input_format = "ARG3"
+        else:
+            translated_call = (f"    GL_FUNC(ext_gl{name})(ARG1, "
+                               "static_cast<GLenum>(rbMapped.internal), ARG3, ARG4);")
+            input_format = "ARG2"
+        translated = f"""#ifdef __EMSCRIPTEN__
+    const emuwasm_gl4es::RenderbufferFormat rbMapped =
+        emuwasm_gl4es::normalize_renderbuffer_format({input_format});
+    if (rbMapped.changed) {{
+        thread_local static unsigned emuwasm_rb_format_logs = 0;
+        if (emuwasm_rb_format_logs++ < 80)
+            klog_fmt("emuwasm-gl4es: gl{name} format=0x%x -> 0x%x approximate=%d",
+                     rbMapped.original, rbMapped.internal,
+                     static_cast<int>(rbMapped.approximation));
+    }}
+{translated_call}
+#else
+{original_call}
+#endif"""
+        substitute_once(gl_ext2, original_call, translated)
 
     # Register EVERY guest GL request at the central dispatcher, including
     # requests rejected by WebGL validation or lacking a current GL context.
@@ -174,12 +236,9 @@ def apply(root: Path, overlay: Path) -> None:
     substitute_once(glcommon, dispatcher_start, dispatcher_replacement)
 
     (gl / "emuwasm_webgl_pixel.inc").write_bytes(overlay.read_bytes())
-    # Keep the GL4ES-inspired mapper a separate, testable C++ header.
-    mapper = overlay.with_name("emuwasm_gl4es_formats.h")
-    if not mapper.is_file():
-        raise RuntimeError(f"Missing GL4ES-inspired texture mapper: {mapper}")
     (gl / "emuwasm_gl4es_formats.h").write_bytes(mapper.read_bytes())
-    print("EmuWasm: OpenGL BGRA/BGR and GL4ES-inspired WebGL2 format adapter applied")
+    (gl / "emuwasm_gl4es_framebuffer.h").write_bytes(fbo_mapper.read_bytes())
+    print("EmuWasm: BGRA/BGR, GL4ES-inspired textures and framebuffer formats applied")
 
 
 if __name__ == "__main__":
