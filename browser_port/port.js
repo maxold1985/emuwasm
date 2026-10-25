@@ -202,6 +202,45 @@ async function start() {
     }
 }
 
+
+function exportGLDiagnostics() {
+    const canvas = document.createElement("canvas");
+    const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+    const data = { time: new Date().toISOString(), userAgent: navigator.userAgent,
+        graphics: byId("graphics").value, webgl: null };
+    if (gl) {
+        const debug = gl.getExtension("WEBGL_debug_renderer_info");
+        const get = (name) => gl.getParameter(name);
+        const framebuffer = gl.createFramebuffer();
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 16, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+        data.webgl = { version: get(gl.VERSION), renderer: get(gl.RENDERER),
+            vendor: get(gl.VENDOR), shadingLanguage: get(gl.SHADING_LANGUAGE_VERSION),
+            unmaskedRenderer: debug ? get(debug.UNMASKED_RENDERER_WEBGL) : null,
+            maxTextureSize: get(gl.MAX_TEXTURE_SIZE),
+            maxRenderbufferSize: get(gl.MAX_RENDERBUFFER_SIZE),
+            extensions: gl.getSupportedExtensions(),
+            framebufferStatus: gl.checkFramebufferStatus(gl.FRAMEBUFFER),
+            error: gl.getError() };
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.deleteFramebuffer(framebuffer);
+        gl.deleteTexture(texture);
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "emuwasm-opengl-diagnostics.json";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function initialize() {
     mark("check-wasm", hasWebAssembly(),
          hasWebAssembly() ? "WebAssembly: disponivel." : "WebAssembly: indisponivel.");
@@ -231,6 +270,7 @@ function initialize() {
         });
     }
     byId("launch").addEventListener("click", start);
+    byId("gl-diagnostics").addEventListener("click", exportGLDiagnostics);
     loadStatus().catch((error) => {
         mark("check-runtime", false, "Servidor local indisponivel: " + error.message);
         syncLaunch();
