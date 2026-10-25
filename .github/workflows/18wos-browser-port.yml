@@ -8,6 +8,7 @@ on:
       - 'browser_port/**'
       - 'scripts/package_boxedwine_game.py'
       - 'scripts/patch_boxedwine_webgl.py'
+      - 'scripts/test_patch_boxedwine_webgl.py'
 
 permissions:
   contents: read
