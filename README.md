@@ -207,6 +207,37 @@ Linux filesystem, so Prism3D can access its assets. You need a working
 X11/WSLg display. A launched Wine process is not proof of game compatibility;
 inspect the SDL window, console output and Wine diagnostics.
 
+### Gerar Wine Linux i386 real para BoxedWine (`bin/wine`)
+
+O workflow [`Build real Wine i386 bin for BoxedWine browser`](.github/workflows/build-boxedwine-wine-bin.yml)
+compila Wine 11.0 Linux **ELF32 i386** com o construtor oficial
+do BoxedWine, usa o sistema TinyCore como base e gera um
+artefato `boxedwine-linux-i386-wine11-rootfs` com `boxedwine.zip`.
+
+Não confundir o **binário do emulador** (`boxedwine.wasm`) com
+o **binário convidado do Wine** (`/bin/wine`). Um ZIP contendo
+somente `wine/i386-windows/*.dll` não é um sistema Linux executável.
+
+O script `scripts/prepare_boxedwine_wine_root.py` valida o ELF32
+e as bibliotecas do sistema; quando o Wine está em
+`opt/wine/bin/wine`, copia seu ELF original para `bin/wine`
+mantendo o restante do ZIP. Não fabrica um executável falso.
+
+Após a execução do workflow:
+
+1. Abra o run em Actions e baixe `boxedwine-linux-i386-wine11-rootfs`.
+2. Extraia `boxedwine.zip` e importe-o no lançador web, substituindo
+   o ZIP antigo de DLLs.
+3. Use o modo RAM para o primeiro teste e confira o log de execução.
+
+**Atenção:** o workflow é uma compilação pesada de Wine e pode levar
+bastante tempo ou falhar por dependências do runner. A opção
+`--skip-wineboot` evita inicializar o prefixo no runner; isso
+significa que a primeira execução no navegador ainda pode precisar
+de `wineboot`. O artefato só existe se o job terminar com sucesso.
+Mesmo com `/bin/wine` válido, o funcionamento do Prism3D não está
+garantido.
+
 ### Browser port: 18 Wheels of Steel launcher (WASM + WebGL)
 
 O projeto inclui agora [`browser_port/`](browser_port) com uma pagina em
