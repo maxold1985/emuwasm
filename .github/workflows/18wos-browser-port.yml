@@ -88,7 +88,8 @@ jobs:
           grep -q 'GL_FUNCTION_CUSTOM(Begin' boxedwine-upstream/source/opengl/glfunctions.h
           grep -q 'GL_FUNCTION_CUSTOM(End' boxedwine-upstream/source/opengl/glfunctions.h
           grep -q 'GL_FUNCTION_CUSTOM(LoadMatrixf' boxedwine-upstream/source/opengl/glfunctions.h
-          grep -q 'emuwasm_ffp_command' boxedwine-upstream/source/opengl/glcommon.cpp
+          grep -q 'emuwasm_ffp_command' boxedwine-upstream/source/opengl/emuwasm_gl4es_fixed_handlers.inc
+          grep -q 'gl.drawArrays' boxedwine-upstream/source/opengl/emuwasm_gl4es_fixed_pipeline.inc
       - name: Compile new patched WASM/WebGL runtime, with GL counters
         shell: bash
         run: |
