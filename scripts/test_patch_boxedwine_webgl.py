@@ -101,6 +101,7 @@ class WebGLPatchTest(unittest.TestCase):
             self.make_source(root)
             overlay = root / "shim.inc"
             overlay.write_text("// shim fixture\n", encoding="utf-8")
+            (root / "emuwasm_gl4es_formats.h").write_text("// mapper fixture\n", encoding="utf-8")
             patcher.apply(root, overlay)
             with self.assertRaisesRegex(RuntimeError, "already patched"):
                 patcher.apply(root, overlay)
