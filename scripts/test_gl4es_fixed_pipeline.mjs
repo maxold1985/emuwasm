@@ -11,7 +11,7 @@ const src = readFileSync(
 const start = src.indexOf("EM_JS(int, emuwasm_ffp_command,");
 assert.ok(start >= 0);
 const bodyStart = src.indexOf("), {", start);
-const bodyEnd = src.lastIndexOf("\n});");
+const bodyEnd = src.indexOf("\n});", bodyStart);
 assert.ok(bodyStart > start && bodyEnd > bodyStart);
 const memory = new ArrayBuffer(4096);
 const HEAPF32 = new Float32Array(memory);
@@ -150,6 +150,26 @@ assert.equal(call(18,1,0,0,0,512),0);
 assert.equal(Module.emuwasmFFPContexts.get(gl).matrices[0][12],9);
 assert.equal(call(19,1,0,0,0,512),0);
 assert.equal(Module.emuwasmFFPContexts.get(gl).matrices[0][12],18);
+
+// Read back real fixed-function state as float, double and integer outputs.
+const queryStart = src.indexOf("EM_JS(int, emuwasm_ffp_query,");
+assert.ok(queryStart >= 0);
+const queryBodyStart = src.indexOf("), {", queryStart);
+const queryBodyEnd = src.indexOf("\n});", queryBodyStart);
+const query = runInNewContext(
+    "(function(pname,address,outputKind) {" +
+    src.slice(queryBodyStart + 4, queryBodyEnd) + "})", context
+);
+assert.equal(query(0x0BA6, 1024, 0), 1); // GL_MODELVIEW_MATRIX, float
+assert.equal(HEAPF32[1024 / 4 + 12], 18);
+assert.equal(query(0x0BA7, 1280, 1), 1); // GL_PROJECTION_MATRIX, double
+assert.ok(HEAPF64[1280 / 8] > 0);
+assert.equal(query(0x0BA0, 1536, 2), 1); // GL_MATRIX_MODE, integer
+assert.equal(new Int32Array(memory)[1536 / 4], 0x1700);
+assert.equal(query(0x0BA3, 1540, 2), 1); // MODELVIEW_STACK_DEPTH
+assert.equal(new Int32Array(memory)[1540 / 4], 1);
+assert.equal(query(0xDEADBEEF, 1544, 0), 0);
+
 assert.equal(call(1,99),0x0500); // Invalid mode
 assert.equal(call(2),0x0502); // End without Begin
 assert.equal(warnings.length,0);
