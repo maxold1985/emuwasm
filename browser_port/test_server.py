@@ -108,10 +108,23 @@ class WineArtifactImportTest(unittest.TestCase):
             import_wine_artifact(self.artifact, self.wine)
         self.assertFalse(self.wine.exists())
 
-    def test_existing_valid_wine_takes_precedence(self) -> None:
+    def test_new_artifact_replaces_old_wine(self) -> None:
+        from io import BytesIO
+        make_zip(self.wine, {"bin/wine": b"old"})
+        inner = BytesIO()
+        with ZipFile(inner, "w") as z:
+            z.writestr("bin/wine", b"new")
+        with ZipFile(self.artifact, "w") as z:
+            z.writestr("boxedwine.zip", inner.getvalue())
+        self.assertIsNone(ensure_local_wine(self.folder))
+        with ZipFile(self.wine) as z:
+            self.assertEqual(z.read("bin/wine"), b"new")
+        self.assertIsNone(ensure_local_wine(self.folder))
+
+    def test_invalid_artifact_does_not_replace_existing_wine(self) -> None:
         make_zip(self.wine, {"bin/wine": b"existing"})
         make_zip(self.artifact, {"wrong.txt": b"bad"})
-        self.assertIsNone(ensure_local_wine(self.folder))
+        self.assertIn("Falha", ensure_local_wine(self.folder))
         with ZipFile(self.wine) as z:
             self.assertEqual(z.read("bin/wine"), b"existing")
 
