@@ -2,6 +2,11 @@ name: Build real Wine i386 bin for BoxedWine browser
 
 on:
   workflow_dispatch:
+    inputs:
+      base_zip_mirror_url:
+        description: 'Optional HTTPS mirror for TinyCore15WineBase.zip (verified by SHA-256)'
+        required: false
+        type: string
   push:
     paths:
       - '.github/workflows/build-boxedwine-wine-bin.yml'
@@ -41,6 +46,45 @@ jobs:
           repository: danoon2/Boxedwine
           ref: master
           path: boxedwine-upstream
+      - name: Fetch pinned TinyCore base with retries and SHA-256 verification
+        shell: bash
+        env:
+          BASE_ZIP_MIRROR_URL: ${{ inputs.base_zip_mirror_url || vars.BOXEDWINE_BASE_ZIP_MIRROR_URL || '' }}
+        working-directory: boxedwine-upstream/tools/buildWine
+        run: |
+          set -euo pipefail
+          BASE_FILE=TinyCore15WineBase.zip
+          EXPECTED_SIZE=70212286
+          EXPECTED_SHA=84b623a3d4fb303728915e871ed2af95ce2ba10203c68b2dd3e596534e61108a
+          ORIGINAL_URL=https://boxedwine.org/v2/11/TinyCore15WineBase.zip
+          URLS=()
+          if [[ -n "$BASE_ZIP_MIRROR_URL" ]]; then
+            if [[ "$BASE_ZIP_MIRROR_URL" != https://* ]]; then
+              echo "::error::Mirror must use HTTPS"
+              exit 1
+            fi
+            URLS+=("$BASE_ZIP_MIRROR_URL")
+          fi
+          URLS+=("$ORIGINAL_URL")
+          for url in "${URLS[@]}"; do
+            echo "Attempting pinned base from: $url"
+            if curl --fail --location --show-error --silent \
+              --connect-timeout 20 --max-time 240 --retry 3 --retry-delay 8 \
+              --retry-all-errors --output "$BASE_FILE.partial" "$url"; then
+              size=$(stat -c %s "$BASE_FILE.partial")
+              sha=$(sha256sum "$BASE_FILE.partial" | cut -d' ' -f1)
+              if [[ "$size" == "$EXPECTED_SIZE" && "$sha" == "$EXPECTED_SHA" ]]; then
+                mv "$BASE_FILE.partial" "$BASE_FILE"
+                echo "Pinned TinyCore base verified ($size bytes, sha256=$sha)"
+                exit 0
+              fi
+              echo "::warning::Invalid base ZIP from $url: size=$size sha256=$sha"
+            fi
+            rm -f "$BASE_FILE.partial"
+          done
+          echo "::error::TinyCore base unavailable from all configured URLs."
+          echo "::error::Set repository variable BOXEDWINE_BASE_ZIP_MIRROR_URL to an accessible HTTPS copy of the same SHA-256 file."
+          exit 1
       - name: Build real Linux i386 Wine 11.0 and complete guest filesystem
         shell: bash
         working-directory: boxedwine-upstream/tools/buildWine
