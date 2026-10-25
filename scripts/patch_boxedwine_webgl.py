@@ -24,7 +24,8 @@ def apply(root: Path, overlay: Path) -> None:
     glfunctions = gl / "glfunctions.h"
     glcommon = gl / "glcommon.cpp"
     gl_ext = gl / "glfunctions_ext1.cpp"
-    if not (glfunctions.is_file() and glcommon.is_file() and gl_ext.is_file()):
+    gl_ext2 = gl / "glfunctions_ext2.cpp"
+    if not all(p.is_file() for p in (glfunctions, glcommon, gl_ext, gl_ext2)):
         raise RuntimeError(f"Not an upstream BoxedWine source checkout: {root}")
     if not overlay.is_file():
         raise RuntimeError(f"Missing EmuWasm shim source: {overlay}")
@@ -104,6 +105,30 @@ def apply(root: Path, overlay: Path) -> None:
                    'target=0x%x result=0x%x", ARG1, EAX);\n'
                    '#endif')
     substitute_once(gl_ext, needle, replacement)
+
+    # The WineD3D framebuffer probes deliberately try unsupported formats.
+    # Log the real attachment/storage operations; never fake "complete" status
+    # or swallow OpenGL errors, because that would break feature detection.
+    def trace_call(file: Path, entrypoint: str, fmt: str, arguments: str) -> None:
+        old = f"    GL_FUNC(ext_gl{entrypoint})({arguments});"
+        # Arguments are already read from the emulated x86 CPU stack.
+        arg_names = arguments
+        new = (old + "\n#ifdef __EMSCRIPTEN__\n"
+               "    thread_local static unsigned emuwasm_calls = 0;\n"
+               "    if (emuwasm_calls++ < 80)\n"
+               f'        klog_fmt("emuwasm-webgl: gl{entrypoint} {fmt}", {arg_names});\n'
+               "#endif")
+        substitute_once(file, old, new)
+
+    trace_call(gl_ext, "FramebufferTexture2D",
+               "target=0x%x attach=0x%x texTarget=0x%x texture=%u level=%d",
+               "ARG1, ARG2, ARG3, ARG4, ARG5")
+    trace_call(gl_ext, "FramebufferRenderbuffer",
+               "target=0x%x attach=0x%x rbTarget=0x%x renderbuffer=%u",
+               "ARG1, ARG2, ARG3, ARG4")
+    trace_call(gl_ext2, "RenderbufferStorage",
+               "target=0x%x format=0x%x size=%dx%d",
+               "ARG1, ARG2, ARG3, ARG4")
 
     (gl / "emuwasm_webgl_pixel.inc").write_bytes(overlay.read_bytes())
     print("EmuWasm: OpenGL BGRA/BGR -> WebGL2 pixel shim and GL diagnostics applied")
