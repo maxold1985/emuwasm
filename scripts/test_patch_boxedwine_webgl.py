@@ -69,11 +69,14 @@ class WebGLPatchTest(unittest.TestCase):
             gl = self.make_source(root)
             overlay = root / "shim.inc"
             overlay.write_text("// shim fixture\n", encoding="utf-8")
+            (root / "emuwasm_gl4es_formats.h").write_text("// mapper fixture\n", encoding="utf-8")
             patcher.apply(root, overlay)
             self.assertEqual(
                 (gl / "emuwasm_webgl_pixel.inc").read_text(encoding="utf-8"),
                 "// shim fixture\n",
             )
+            self.assertEqual((gl / "emuwasm_gl4es_formats.h").read_text(encoding="utf-8"),
+                             "// mapper fixture\n")
             callbacks = (gl / "glfunctions.h").read_text(encoding="utf-8")
             self.assertIn("GL_FUNCTION_CUSTOM(TexImage2D", callbacks)
             source = (gl / "glcommon.cpp").read_text(encoding="utf-8")
