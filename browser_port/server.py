@@ -117,10 +117,16 @@ def identical_zip_files(source: Path, destination: Path) -> bool:
     """Compare a validated upload against the installed ZIP without replacing it."""
     if not destination.is_file() or source.stat().st_size != destination.stat().st_size:
         return False
+    # Compare chunks directly; Python 3.10 has no hashlib.file_digest.
+    # A mismatch can short-circuit without hashing both large ZIPs.
     with source.open("rb") as first, destination.open("rb") as second:
-        return hashlib.file_digest(first, "sha256").digest() == (
-            hashlib.file_digest(second, "sha256").digest()
-        )
+        while True:
+            left = first.read(READ_CHUNK)
+            right = second.read(READ_CHUNK)
+            if left != right:
+                return False
+            if not left:
+                return True
 
 
 class ArchiveInUseError(Exception):
@@ -202,8 +208,11 @@ def ensure_local_wine(user_data: Path) -> str | None:
         return None
     marker = user_data / ".wine-artifact.sha256"
     try:
+        hasher = hashlib.sha256()
         with artifact.open("rb") as source:
-            digest = hashlib.file_digest(source, "sha256").hexdigest()
+            for chunk in iter(lambda: source.read(READ_CHUNK), b""):
+                hasher.update(chunk)
+        digest = hasher.hexdigest()
         import_wine_artifact(artifact, destination)
         marker.write_text(digest, encoding="ascii")
         print(f"[browser-port] Wine importado do artefato local: {artifact.name}", flush=True)
