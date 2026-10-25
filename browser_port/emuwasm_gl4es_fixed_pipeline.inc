@@ -1,7 +1,7 @@
 /*
  * OpenGL 1.x immediate/fixed-function pipeline -> actual WebGL2 rendering.
  *
- * The guest GL APIs glBegin/glEnd/glVertex*/glMatrix* invoke this runtime
+ * The guest GL APIs glBegin, glEnd, glVertex and glMatrix commands invoke this runtime
  * through EM_JS, preserving the current WebGL context and its host bindings.
  * State is per-WebGL-context, not shared among unrelated guest contexts.
  *
