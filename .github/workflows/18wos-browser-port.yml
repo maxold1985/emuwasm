@@ -85,10 +85,13 @@ jobs:
           cd /d "%~dp0"
           echo EmuWasm - 18 Wheels of Steel / Prism3D no navegador
           echo.
-          py -3 server.py --port 8000
+          set "PORT=8000"
+          if not "%~1"=="" set "PORT=%~1"
+          echo Abrindo http://127.0.0.1:%PORT%/
+          py -3 server.py --port "%PORT%"
           if errorlevel 1 (
               echo.
-              echo ERRO: Python 3 nao encontrado ou porta 8000 indisponivel.
+              echo ERRO: Python 3 nao encontrado ou porta %PORT% indisponivel.
           )
           pause
           BAT
@@ -100,12 +103,18 @@ jobs:
           1. Extract ALL files in this ZIP.
           2. Double-click start_windows.bat (Python 3 required).
           3. Open http://127.0.0.1:8000/ in Chrome or Edge.
+             If your server runs on 8085: start_windows.bat 8085
+             Then use http://127.0.0.1:8085/ instead.
           4. Import your compatible Wine filesystem ZIP using the web page.
              Example: TinyCore15Wine11.0.zip from the original BoxedWine UI.
           5. First create ZIP of YOUR OWN installed game:
              py -3 package_boxedwine_game.py --game-dir "C:\GOG Games\18 Wheels of Steel Pedal to the Metal" --exe prism3d.exe --output prism3d.zip
           6. Import prism3d.zip using the browser page.
           7. Select OpenGL/WebGL, then click Start.
+          8. Choose RAM mode for a first diagnostic run if IndexedDB stalls.
+          9. The BoxedWine page has a diagnostics panel with a Download Log button.
+             The terminal also shows JavaScript errors and ZIP/wasm request milestones.
+             Private log: .local-game-data\.diagnostics\browser-console.log
 
           Files stay local under .local-game-data and are only served from 127.0.0.1.
           Do not host this folder on the internet or publish copyrighted game ZIPs.
