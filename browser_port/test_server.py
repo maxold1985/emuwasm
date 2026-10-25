@@ -61,6 +61,16 @@ class ArchiveValidationTest(unittest.TestCase):
         make_zip(self.path, {"bin/wine": b"guest"})
         self.assertEqual(validate_archive(self.path, "wine")["files"], 1)
 
+    def test_wine_dll_only_zip_is_not_a_bootable_guest(self) -> None:
+        make_zip(self.path, {"windows/system32/kernel32.dll": b"MZ"})
+        with self.assertRaisesRegex(ValueError, "bin/wine"):
+            validate_archive(self.path, "wine")
+
+    def test_wine_zip_with_extra_parent_folder_is_rejected(self) -> None:
+        make_zip(self.path, {"TinyCore15Wine11/bin/wine": b"guest"})
+        with self.assertRaisesRegex(ValueError, "pasta extra"):
+            validate_archive(self.path, "wine")
+
     def test_missing_game_data_raises_warning(self) -> None:
         make_zip(self.path, {"prism3d.exe": b"MZ"})
         result = validate_archive(self.path, "game")
@@ -135,6 +145,24 @@ class LocalHTTPTest(unittest.TestCase):
         code, data = self.call("/user-content/prism3d.zip")
         self.assertEqual(code, 200)
         self.assertGreater(len(data), 10)
+
+    def test_existing_invalid_wine_zip_is_detected_by_status(self) -> None:
+        import json
+        invalid = self.server.user_data / "boxedwine.zip"
+        make_zip(invalid, {"dlls/kernel32.dll": b"MZ"})
+        code, raw = self.call("/api/status")
+        self.assertEqual(code, 200)
+        item = json.loads(raw)["archives"]["wine"]
+        self.assertFalse(item["ready"])
+        self.assertIn("bin/wine", item["error"])
+
+    def test_upload_rejects_invalid_wine_root(self) -> None:
+        stream = io.BytesIO()
+        with ZipFile(stream, "w") as zf:
+            zf.writestr("Wine11/bin/wine", b"guest")
+        code, body = self.call("/api/upload/wine", stream.getvalue(), origin=self.base)
+        self.assertEqual(code, 400)
+        self.assertIn(b"bin/wine", body)
 
     def test_block_dns_rebinding_host(self) -> None:
         # A hostile DNS alias resolving to loopback must not read local ZIPs.
