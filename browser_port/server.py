@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import shutil
+import threading
 import stat
 import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,6 +23,8 @@ MAX_UPLOAD = 3 * 1024**3  # ZIP bytes; game file packager limits expanded data t
 MAX_UNCOMPRESSED = 8 * 1024**3
 MAX_MEMBERS = 200_000
 READ_CHUNK = 1024 * 1024
+MAX_DIAGNOSTIC_POST = 24 * 1024
+MAX_DIAGNOSTIC_LOG_BYTES = 1024 * 1024
 ALLOWED_UPLOADS = {"wine": "boxedwine.zip", "game": "prism3d.zip"}
 MIME = {
     ".html": "text/html; charset=utf-8",
@@ -98,6 +101,10 @@ class GameServer(ThreadingHTTPServer):
         self.webroot = webroot.resolve()
         self.user_data = user_data.resolve()
         self.user_data.mkdir(parents=True, exist_ok=True)
+        self.diagnostics_dir = self.user_data / ".diagnostics"
+        self.diagnostics_dir.mkdir(parents=True, exist_ok=True)
+        self.diagnostics_lock = threading.Lock()
+        self.browser_log = self.diagnostics_dir / "browser-console.log"
 
 
 class GameHandler(BaseHTTPRequestHandler):
@@ -146,11 +153,89 @@ class GameHandler(BaseHTTPRequestHandler):
             return None
         return self.server.webroot.joinpath(*route.lstrip("/").split("/"))
 
+    def do_HEAD(self) -> None:
+        if not self.valid_host():
+            self.reply_json(403, {"error": "Host nao autorizado"})
+            return
+        route = self.parse_route()
+        # Preflight requests must not stream the full ZIP into the browser.
+        file = self.safe_static_path(route)
+        if file is None or not file.is_file():
+            self.send_response(404)
+            self.common_headers()
+            self.end_headers()
+            return
+        size = file.stat().st_size
+        self.send_response(200)
+        self.common_headers()
+        self.send_header("Content-Type", MIME.get(file.suffix.lower(), "application/octet-stream"))
+        self.send_header("Content-Length", str(size))
+        self.end_headers()
+
+    def log_browser_events(self) -> None:
+        # Browser messages must come from this exact local origin. Unlike an
+        # external telemetry endpoint, the file remains private on the PC.
+        expected_origin = f"http://127.0.0.1:{self.server.server_port}"
+        if self.headers.get("Origin") != expected_origin:
+            self.reply_json(403, {"error": "Origem de diagnostico nao autorizada"})
+            return
+        if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
+            self.reply_json(415, {"error": "Esperado application/json"})
+            return
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            size = 0
+        if size < 2 or size > MAX_DIAGNOSTIC_POST or self.headers.get("Transfer-Encoding"):
+            self.reply_json(413, {"error": "Mensagem de log invalida ou grande demais"})
+            return
+        try:
+            raw = self.rfile.read(size)
+            if len(raw) != size:
+                raise ValueError("Log incompleto")
+            event_data = json.loads(raw)
+            events = event_data.get("events") if isinstance(event_data, dict) else None
+            if not isinstance(events, list) or not 1 <= len(events) <= 24:
+                raise ValueError("Formato de eventos invalido")
+            lines = []
+            for item in events:
+                if not isinstance(item, dict):
+                    raise ValueError("Evento invalido")
+                level = item.get("level", "info")
+                if level not in ("info", "warn", "error", "net"):
+                    raise ValueError("Nivel de log invalido")
+                raw_message = item.get("message", "")
+                if not isinstance(raw_message, str) or len(raw_message) > 1200:
+                    raise ValueError("Mensagem de log invalida")
+                message = raw_message.replace("\r", " ").replace("\n", " ")
+                line = f"[browser:{level}] {message}"
+                lines.append(line)
+            with self.server.diagnostics_lock:
+                destination = self.server.browser_log
+                if destination.exists() and destination.stat().st_size > MAX_DIAGNOSTIC_LOG_BYTES:
+                    destination.replace(destination.with_suffix(".previous.log"))
+                with destination.open("a", encoding="utf-8") as stream:
+                    for line in lines:
+                        stream.write(line + "\n")
+            for line in lines:
+                if line.startswith(("[browser:error]", "[browser:warn]")) or any(
+                    term in line for term in ("initial setup", "user-content/", ".wasm", "Emulator params:")
+                ):
+                    print(line[:1000], flush=True)
+            self.reply_json(200, {"ok": True, "events": len(lines)})
+        except (ValueError, UnicodeError, OSError) as exc:
+            self.reply_json(400, {"error": str(exc)})
+
     def do_GET(self) -> None:
         if not self.valid_host():
             self.reply_json(403, {"error": "Host nao autorizado; use 127.0.0.1"})
             return
         route = self.parse_route()
+        if route == "/favicon.ico":
+            self.send_response(204)
+            self.common_headers()
+            self.end_headers()
+            return
         if route == "/api/status":
             archives = {}
             for kind, name in ALLOWED_UPLOADS.items():
@@ -184,6 +269,9 @@ class GameHandler(BaseHTTPRequestHandler):
             self.reply_json(403, {"error": "Host nao autorizado; use 127.0.0.1"})
             return
         route = self.parse_route()
+        if route == "/api/browser-log":
+            self.log_browser_events()
+            return
         if not route.startswith("/api/upload/"):
             self.reply_json(404, {"error": "Rota desconhecida"})
             return
@@ -248,6 +336,7 @@ def main() -> None:
     print(f"Prism3D browser port: http://127.0.0.1:{args.port}/")
     print(f"ZIPs locais (NAO publicar): {data}")
     print("O servidor usa somente localhost. Ctrl+C para encerrar.")
+    print(f"Log do navegador (privado): {server.browser_log}")
     try:
         server.serve_forever(poll_interval=0.3)
     except KeyboardInterrupt:
