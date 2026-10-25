@@ -257,13 +257,12 @@ function initialize() {
                 const result = await uploadZIP(kind, file);
                 const warn = result.warnings.length
                     ? "\nAvisos: " + result.warnings.join("; ") : "";
-                byId(kind + "-state").textContent =
-                    "OK: " + result.files + " arquivos (" +
-                    readableBytes(result.uncompressedBytes) + ")" + warn;
                 await loadStatus();
-                if (warn) {
-                    byId(kind + "-state").textContent += warn;
-                }
+                byId(kind + "-state").textContent =
+                    (result.reused ? "ZIP identico ja instalado; arquivo anterior mantido. " :
+                                     "OK: ZIP importado. ") +
+                    result.files + " arquivos (" +
+                    readableBytes(result.uncompressedBytes) + ")" + warn;
             } catch (error) {
                 byId(kind + "-state").textContent = "Erro: " + error.message;
             }
