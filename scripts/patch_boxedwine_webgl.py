@@ -174,7 +174,12 @@ def apply(root: Path, overlay: Path) -> None:
     substitute_once(glcommon, dispatcher_start, dispatcher_replacement)
 
     (gl / "emuwasm_webgl_pixel.inc").write_bytes(overlay.read_bytes())
-    print("EmuWasm: OpenGL BGRA/BGR -> WebGL2 pixel shim and GL diagnostics applied")
+    # Keep the GL4ES-inspired mapper a separate, testable C++ header.
+    mapper = overlay.with_name("emuwasm_gl4es_formats.h")
+    if not mapper.is_file():
+        raise RuntimeError(f"Missing GL4ES-inspired texture mapper: {mapper}")
+    (gl / "emuwasm_gl4es_formats.h").write_bytes(mapper.read_bytes())
+    print("EmuWasm: OpenGL BGRA/BGR and GL4ES-inspired WebGL2 format adapter applied")
 
 
 if __name__ == "__main__":
