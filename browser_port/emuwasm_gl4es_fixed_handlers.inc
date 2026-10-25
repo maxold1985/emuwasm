@@ -304,3 +304,58 @@ void glcommon_glMultMatrixd(CPU* cpu) {
 #endif
 }
 
+
+
+// Desktop matrix/color queries must reflect our emulated fixed-function state.
+static bool emuwasm_ffp_is_float_query(GLenum pname) {
+    return pname == 0x0BA6 || pname == 0x0BA7 || pname == 0x0BA8 ||
+           pname == 0x0B00 || pname == 0x0B03 || pname == 0x0BA0 ||
+           pname == 0x0BA3 || pname == 0x0BA4 || pname == 0x0BA5;
+}
+
+static bool emuwasm_ffp_is_integer_query(GLenum pname) {
+    return pname == 0x0BA0 || pname == 0x0BA3 ||
+           pname == 0x0BA4 || pname == 0x0BA5;
+}
+
+static U32 emuwasm_ffp_query_components(GLenum pname) {
+    if (pname == 0x0BA6 || pname == 0x0BA7 || pname == 0x0BA8)
+        return 16;
+    if (pname == 0x0B00 || pname == 0x0B03)
+        return 4;
+    return 1;
+}
+
+void glcommon_glGetFloatv(CPU* cpu) {
+    const GLenum pname = ARG1;
+#ifdef __EMSCRIPTEN__
+    if (emuwasm_ffp_is_float_query(pname)) {
+        emuwasm_ffp_report(cpu, emuwasm_ffp_command(0, 0, 0, 0, 0, 0));
+        MarshalReadWrite<GLfloat> data(cpu, ARG2,
+                                      emuwasm_ffp_query_components(pname));
+        if (!emuwasm_ffp_query(pname,
+                static_cast<int>(reinterpret_cast<uintptr_t>(data.getPtr())), 0))
+            emuwasm_gl4es_set_error(cpu, GL_INVALID_OPERATION);
+        return;
+    }
+#endif
+    MarshalReadWrite<GLfloat> data(cpu, ARG2, getSize(pname));
+    GL_FUNC(pglGetFloatv)(pname, data.getPtr());
+}
+
+void glcommon_glGetDoublev(CPU* cpu) {
+    const GLenum pname = ARG1;
+#ifdef __EMSCRIPTEN__
+    if (emuwasm_ffp_is_float_query(pname)) {
+        emuwasm_ffp_report(cpu, emuwasm_ffp_command(0, 0, 0, 0, 0, 0));
+        MarshalReadWrite<GLdouble> data(cpu, ARG2,
+                                       emuwasm_ffp_query_components(pname));
+        if (!emuwasm_ffp_query(pname,
+                static_cast<int>(reinterpret_cast<uintptr_t>(data.getPtr())), 1))
+            emuwasm_gl4es_set_error(cpu, GL_INVALID_OPERATION);
+        return;
+    }
+#endif
+    MarshalReadWrite<GLdouble> data(cpu, ARG2, getSize(pname));
+    GL_FUNC(pglGetDoublev)(pname, data.getPtr());
+}
