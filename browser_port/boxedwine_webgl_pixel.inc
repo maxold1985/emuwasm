@@ -12,13 +12,42 @@
 #include <cstdint>
 #include <vector>
 
+// WebGL2 supports getBufferSubData, while GLES3 intentionally has no matching
+// native GL entry point. Read the existing PIXEL_UNPACK_BUFFER without mapping
+// it as an x86 / wasm CPU pointer. Return false for WebGL1 or invalid ranges.
+EM_JS(int, emuwasm_webgl_read_unpack_pbo,
+      (unsigned byteOffset, unsigned out, unsigned size), {
+    var gl = GL.currentContext && GL.currentContext.GLctx;
+    if (!gl || typeof gl.getBufferSubData !== "function" || !size)
+        return 0;
+    try {
+        var buffer = gl.getParameter(0x88EF); // PIXEL_UNPACK_BUFFER_BINDING
+        if (!buffer) return 0;
+        var capacity = gl.getBufferParameter(0x88EC, 0x8764); // BUFFER_SIZE
+        if (!Number.isSafeInteger(capacity) ||
+                byteOffset > capacity || size > capacity - byteOffset)
+            return 0;
+        // The current context owns the binding. Emscripten provides the
+        // wasm memory view, so this does not expose guest files or buffers.
+        gl.getBufferSubData(0x88EC, byteOffset,
+                            HEAPU8.subarray(out, out + size));
+        return 1;
+    } catch (error) {
+        console.warn("emuwasm-webgl: PBO readback failed", String(error));
+        return 0;
+    }
+});
+
 struct EmuWasmWebGLPixelUpload {
     GLenum format;
     GLenum type;
     const GLvoid* pixels;
     std::vector<U8> converted;
+    std::vector<U8> pboReadback;
 
     bool changedUnpack = false;
+    bool unboundPbo = false;
+    GLint previousPbo = 0;
     GLint oldAlignment = 4;
     GLint oldRowLength = 0;
     GLint oldSkipRows = 0;
@@ -37,14 +66,6 @@ struct EmuWasmWebGLPixelUpload {
         if (!bgra && !bgr)
             return;
 
-        // PBO pointer arguments are byte offsets into GPU buffers. Reading
-        // them as guest CPU pointers would corrupt memory. Do not convert.
-        if (unpackPboBound) {
-            klog_fmt("emuwasm-webgl: BGR/BGRA PBO upload requires GPU staging: format=0x%x type=0x%x",
-                     format, type);
-            return;
-        }
-
         // Packed REV is byte-compatible with BGRA on little-endian wasm32.
         // Other packed representations need a dedicated component unpacker.
         if (type != GL_UNSIGNED_BYTE && !(bgra && type == packed8888Rev)) {
@@ -56,9 +77,9 @@ struct EmuWasmWebGLPixelUpload {
         const unsigned channels = bgra ? 4u : 3u;
         const GLenum outputFormat = bgra ? GL_RGBA : GL_RGB;
 
-        // When allocating texture storage, changing BGRA to RGBA is safe
-        // without accessing any pixel data.
-        if (!pixels) {
+        // No GPU buffer bound and no pixels: allocate texture storage only.
+        // With a bound PBO, pointer 0 is a *valid buffer offset*, not NULL.
+        if (!pixels && !unpackPboBound) {
             format = outputFormat;
             type = GL_UNSIGNED_BYTE;
             return;
@@ -100,8 +121,31 @@ struct EmuWasmWebGLPixelUpload {
             pitch > maxBytes || finalSourceByte > maxBytes)
             return;
 
-        converted.resize(static_cast<size_t>(outputBytes));
+        // For PBO uploads the client pointer is a byte offset, often zero.
+        // We cannot dereference that pointer directly, even if it is nonzero.
         const U8* input = static_cast<const U8*>(pixels);
+        if (unpackPboBound) {
+            const std::uint64_t byteOffset =
+                static_cast<std::uint64_t>(reinterpret_cast<uintptr_t>(pixels));
+            if (byteOffset > UINT32_MAX ||
+                    finalSourceByte > UINT32_MAX) {
+                klog_fmt("emuwasm-webgl: PBO size/offset outside wasm32 range");
+                return;
+            }
+            pboReadback.resize(static_cast<size_t>(finalSourceByte));
+            if (!emuwasm_webgl_read_unpack_pbo(
+                    static_cast<unsigned>(byteOffset),
+                    static_cast<unsigned>(reinterpret_cast<uintptr_t>(pboReadback.data())),
+                    static_cast<unsigned>(finalSourceByte))) {
+                klog_fmt("emuwasm-webgl: PBO readback unsupported or out of range "
+                         "offset=%u len=%u format=0x%x type=0x%x",
+                         static_cast<unsigned>(byteOffset),
+                         static_cast<unsigned>(finalSourceByte), format, type);
+                return;
+            }
+            input = pboReadback.data();
+        }
+        converted.resize(static_cast<size_t>(outputBytes));
         const size_t dstPitch = static_cast<size_t>(width) * channels;
         const size_t srcStart =
             static_cast<size_t>(oldSkipRows) * static_cast<size_t>(pitch) +
@@ -120,6 +164,18 @@ struct EmuWasmWebGLPixelUpload {
             }
         }
 
+        // A CPU pointer is legal only with PIXEL_UNPACK_BUFFER unbound.
+        // Keep Emscripten's GL binding cache and the original guest binding.
+        if (unpackPboBound) {
+            GL_FUNC(pglGetIntegerv)(0x88EF, &previousPbo);
+            if (previousPbo <= 0) {
+                klog_fmt("emuwasm-webgl: PBO binding disappeared during readback");
+                return;
+            }
+            glBindBuffer(0x88EC, 0); // GL_PIXEL_UNPACK_BUFFER
+            unboundPbo = true;
+        }
+
         // Upload is now tightly packed; save and restore all UNPACK state.
         GL_FUNC(pglPixelStorei)(GL_UNPACK_ALIGNMENT, 1);
         GL_FUNC(pglPixelStorei)(GL_UNPACK_ROW_LENGTH, 0);
@@ -133,17 +189,21 @@ struct EmuWasmWebGLPixelUpload {
 
         thread_local unsigned reported = 0;
         if (reported++ < 48)
-            klog_fmt("emuwasm-webgl: converted BGR/BGRA texture %dx%d (%u channels) to WebGL2",
-                     width, height, channels);
+            klog_fmt("emuwasm-webgl: converted BGR/BGRA %dx%d channels=%u "
+                     "pboReadback=%d pixels=%u", width, height, channels,
+                     static_cast<int>(unboundPbo), static_cast<unsigned>(outputBytes));
     }
 
     void restore() {
-        if (!changedUnpack)
-            return;
-        GL_FUNC(pglPixelStorei)(GL_UNPACK_ALIGNMENT, oldAlignment);
-        GL_FUNC(pglPixelStorei)(GL_UNPACK_ROW_LENGTH, oldRowLength);
-        GL_FUNC(pglPixelStorei)(GL_UNPACK_SKIP_ROWS, oldSkipRows);
-        GL_FUNC(pglPixelStorei)(GL_UNPACK_SKIP_PIXELS, oldSkipPixels);
+        if (changedUnpack) {
+            GL_FUNC(pglPixelStorei)(GL_UNPACK_ALIGNMENT, oldAlignment);
+            GL_FUNC(pglPixelStorei)(GL_UNPACK_ROW_LENGTH, oldRowLength);
+            GL_FUNC(pglPixelStorei)(GL_UNPACK_SKIP_ROWS, oldSkipRows);
+            GL_FUNC(pglPixelStorei)(GL_UNPACK_SKIP_PIXELS, oldSkipPixels);
+        }
+        if (unboundPbo) {
+            glBindBuffer(0x88EC, static_cast<GLuint>(previousPbo));
+        }
     }
 };
 #endif
