@@ -13,6 +13,7 @@ on:
       - 'scripts/test_gl4es_framebuffer.cpp'
       - 'scripts/test_gl4es_gl_functions.cpp'
       - 'scripts/test_gl4es_webgl_bridge.mjs'
+      - 'scripts/test_gl4es_fixed_pipeline.mjs'
 
 permissions:
   contents: read
@@ -39,6 +40,7 @@ jobs:
           c++ -std=c++11 -Wall -Wextra -Werror -Ibrowser_port scripts/test_gl4es_gl_functions.cpp -o /tmp/test_gl4es_gl_functions
           /tmp/test_gl4es_gl_functions
           node scripts/test_gl4es_webgl_bridge.mjs
+          node scripts/test_gl4es_fixed_pipeline.mjs
       - name: Verify browser upload security and local WASM service
         run: |
           python3 -m unittest discover -s browser_port -p 'test_*.py' -v
@@ -81,6 +83,12 @@ jobs:
           grep -q 'emuwasm_gl4es_get_tex_image_rgba8' boxedwine-upstream/source/opengl/glcommon.cpp
           test -s boxedwine-upstream/source/opengl/emuwasm_gl4es_gl_functions.inc
           test -s boxedwine-upstream/source/opengl/emuwasm_gl4es_gl_functions.h
+          test -s boxedwine-upstream/source/opengl/emuwasm_gl4es_fixed_handlers.inc
+          test -s boxedwine-upstream/source/opengl/emuwasm_gl4es_fixed_pipeline.inc
+          grep -q 'GL_FUNCTION_CUSTOM(Begin' boxedwine-upstream/source/opengl/glfunctions.h
+          grep -q 'GL_FUNCTION_CUSTOM(End' boxedwine-upstream/source/opengl/glfunctions.h
+          grep -q 'GL_FUNCTION_CUSTOM(LoadMatrixf' boxedwine-upstream/source/opengl/glfunctions.h
+          grep -q 'emuwasm_ffp_command' boxedwine-upstream/source/opengl/glcommon.cpp
       - name: Compile new patched WASM/WebGL runtime, with GL counters
         shell: bash
         run: |
@@ -136,6 +144,8 @@ jobs:
           cp emuwasm/browser_port/emuwasm_gl4es_framebuffer.h browser-build/emuwasm_gl4es_framebuffer.h
           cp emuwasm/browser_port/emuwasm_gl4es_gl_functions.inc browser-build/emuwasm_gl4es_gl_functions.inc
           cp emuwasm/browser_port/emuwasm_gl4es_gl_functions.h browser-build/emuwasm_gl4es_gl_functions.h
+          cp emuwasm/browser_port/emuwasm_gl4es_fixed_handlers.inc browser-build/emuwasm_gl4es_fixed_handlers.inc
+          cp emuwasm/browser_port/emuwasm_gl4es_fixed_pipeline.inc browser-build/emuwasm_gl4es_fixed_pipeline.inc
           cp emuwasm/browser_port/server.py browser-build/server.py
           cp emuwasm/scripts/package_boxedwine_game.py browser-build/package_boxedwine_game.py
           # Inject early debugging before the upstream filesystem shell and WASM.
@@ -218,6 +228,8 @@ jobs:
           test -s browser-build/emuwasm_gl4es_framebuffer.h
           test -s browser-build/emuwasm_gl4es_gl_functions.inc
           test -s browser-build/emuwasm_gl4es_gl_functions.h
+          test -s browser-build/emuwasm_gl4es_fixed_handlers.inc
+          test -s browser-build/emuwasm_gl4es_fixed_pipeline.inc
           test -s browser-build/boxedwine.wasm
           test -s browser-build/EMUWASM-OPENGL-BUILD.txt
           ls -lah browser-build | head -40
