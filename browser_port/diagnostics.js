@@ -223,12 +223,22 @@
         button.type = "button";
         button.textContent = "Baixar log";
         button.addEventListener("click", downloadLogs);
+        const retryRAM = document.createElement("button");
+        retryRAM.type = "button";
+        retryRAM.textContent = "Reiniciar sem IndexedDB";
+        retryRAM.title = "Usa apenas RAM; alteracoes e saves nao ficam persistidos";
+        retryRAM.addEventListener("click", function () {
+            const destination = new URL(location.href);
+            destination.searchParams.set("storage", "memory");
+            destination.searchParams.set("rootfs", "memory");
+            location.assign(destination.toString());
+        });
         const back = document.createElement("a");
         back.href = "/";
         back.textContent = "Voltar ao lançador";
         output = document.createElement("pre");
         output.setAttribute("aria-live", "polite");
-        body.append(intro, button, back, output);
+        body.append(intro, button, retryRAM, back, output);
         panel.append(summary, body);
         document.body.appendChild(panel);
         display();
