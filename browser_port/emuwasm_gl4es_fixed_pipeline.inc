@@ -320,6 +320,22 @@ EM_JS(int, emuwasm_ffp_command,
                 s.alphaFunc = a;
                 s.alphaRef = Math.min(1, Math.max(0, b));
                 return 0;
+            case 18: // glLoadMatrixf/d
+            case 19: { // glMultMatrixf/d
+                var elementSize = a ? 4 : 8;
+                if (!pointer || pointer % elementSize || pointer < 0 ||
+                    pointer + elementSize*16 > HEAPU8.length)
+                    return 0x0501;
+                var start = pointer / elementSize;
+                var memory = a ? HEAPF32 : HEAPF64;
+                var given = [];
+                for (var i = 0; i < 16; ++i) {
+                    if (!Number.isFinite(memory[start+i])) return 0x0501;
+                    given.push(memory[start+i]);
+                }
+                values[idx] = op == 18 ? given : multiply(matrix, given);
+                return 0;
+            }
             default:
                 return 0x0500;
             }
