@@ -110,6 +110,86 @@ def apply(root: Path, overlay: Path) -> None:
             glfunctions, original_line,
             f"GL_FUNCTION_CUSTOM({name}, void, {declaration.group(1)})")
 
+    # WineD3D probes hundreds of GL names. For CUSTOM functions the original
+    # lookup consults pglFoo, but the new handlers are actual int99 callbacks.
+    # Advertise only specifically implemented functions with installed callbacks.
+    patched_proc_names = fixed_entrypoints + (
+        "DrawBuffer", "ReadBuffer", "GetTexImage",
+    )
+    proc_checks = "\n".join(
+        f'    if (!strcmp(name, "gl{func}")) '
+        f'return int99Callback && {func} < int99CallbackSize && '
+        f'int99Callback[{func}] != nullptr;'
+        for func in patched_proc_names
+    )
+    proc_source = """#if defined(__EMSCRIPTEN__)
+static bool emuwasmHasPatchedGLProc(const char* name) {
+""" + proc_checks + """
+    return false;
+}
+
+#if defined(BOXEDWINE_WEBGL_COUNTERS)
+EM_JS(void, emuwasmRecordProcQuery, (const char* requested, int supported), {
+    if (!requested || typeof Module === 'undefined')
+        return;
+    var name = UTF8ToString(requested);
+    if (!/^gl[A-Za-z0-9_]{1,96}$/.test(name))
+        return;
+    var table = Module['emuwasmGLProcQueries'];
+    if (!table) {
+        table = Object.create(null);
+        Module['emuwasmGLProcQueries'] = table;
+        Module['emuwasmGLProcQueryUnique'] = 0;
+    }
+    var row = table[name];
+    if (!row) {
+        if (Module['emuwasmGLProcQueryUnique'] >= 4096)
+            return;
+        row = table[name] = {found:0, missing:0};
+        Module['emuwasmGLProcQueryUnique']++;
+    }
+    if (supported)
+        row.found++;
+    else
+        row.missing++;
+});
+#endif
+#endif
+
+"""
+    substitute_once(glcommon,
+                    "static bool isOpenGLProcAddressAvailable(const char* name) {",
+                    proc_source +
+                    "static bool isOpenGLProcAddressAvailable(const char* name) {")
+
+    # Do not bypass upstream's unsupported-signature safeguards. The special
+    # handling is enabled only when the int99 handler exists in the runtime.
+    substitute_once(
+        glcommon,
+        """    if (boxedwineIsUnsupportedEmscriptenGLProcAddress(name)) {
+        return false;
+    }
+    // This core entry uses our typed WebGL wrapper""",
+        """    if (boxedwineIsUnsupportedEmscriptenGLProcAddress(name)) {
+        return false;
+    }
+    if (emuwasmHasPatchedGLProc(name))
+        return true;
+    // This core entry uses our typed WebGL wrapper"""
+    )
+
+    # Keep a bounded count of distinct function names and found/missing
+    # results for the existing browser export; no per-call console spam.
+    substitute_once(
+        glcommon,
+        "    EAX = isOpenGLProcAddressAvailable(marshalsz(cpu, ARG1)) ? 1 : 0;",
+        """    const char* name = marshalsz(cpu, ARG1);
+    EAX = isOpenGLProcAddressAvailable(name) ? 1 : 0;
+#if defined(__EMSCRIPTEN__) && defined(BOXEDWINE_WEBGL_COUNTERS)
+    emuwasmRecordProcQuery(name, EAX);
+#endif"""
+    )
+
     # Put the GL helpers ahead of glGetIntegerv: the desktop matrix-mode
     # query can then consult exactly the same state that our WebGL2 shader
     # pipeline uses, without asking WebGL for unsupported desktop enums.
