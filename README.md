@@ -237,6 +237,32 @@ O servidor inclui COOP/COEP e verifica os caminhos internos dos ZIPs
 antes de servi-los. O perfil do Wine no navegador e separado e
 persistido via IndexedDB, conforme o suporte do BoxedWine.
 
+#### Diagnóstico quando a página recebe `boxedwine.wasm`, mas o jogo não começa
+
+Receber HTTP 200 de `boxedwine.wasm` apenas prova que o arquivo foi servido;
+não demonstra que o navegador compilou o WASM nem que montou o Wine.
+Se não aparecem `GET /user-content/prism3d.zip` e
+`GET /user-content/boxedwine.zip` no console do servidor:
+
+- Extraia o novo artifact **sobre a instalação anterior**, preservando
+  a pasta `.local-game-data` onde ficam os ZIPs importados.
+- Execute `start_windows.bat 8085` se estiver usando essa porta;
+  abra `http://127.0.0.1:8085/`.
+- Deixe **Armazenamento do Wine = Memória RAM** para isolar possíveis
+  travamentos do IndexedDB. Esse modo não preserva alterações/saves.
+- A página `boxedwine.html` inclui um painel **EmuWasm · diagnóstico de
+  inicialização**, carregado antes do runtime; use **Baixar log**.
+- O log também fica salvo **somente no PC** em
+  `.local-game-data/.diagnostics/browser-console.log` e as mensagens
+  importantes aparecem no terminal do servidor.
+- Se o painel avisar que nenhuma requisição GET dos ZIPs ocorreu após
+  15 segundos, verifique `JS error`, `Promise rejected`, erros de
+  WebAssembly, IndexedDB ou permissões; esses sinais ocorrem no navegador.
+- `GET /favicon.ico 404` é cosmético e não explica falha do jogo.
+
+O teste prévio dos ZIPs usa requisições **HEAD**, que verificam tamanho
+e acesso sem baixar os arquivos de centenas de megabytes. As requisições
+GET subsequentes devem ser feitas pelo BoxedWine real.
 **Limitacao:** nenhuma imagem 3D renderizada do jogo real foi validada.
 O log mais recente de Windows foi ate `Showing Window` e terminou com
 `Vulkan not compiled into Boxedwine`. A interface browser evita selecionar
