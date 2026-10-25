@@ -226,6 +226,8 @@ EM_JS(int, emuwasm_ffp_command,
             if (inside && op != 2 && op != 3 && op != 4 && op != 5)
                 return 0x0502; // GL_INVALID_OPERATION
             switch (op) {
+            case 0: // Initialize compatibility state without changing it.
+                return 0;
             case 1: { // glBegin(mode)
                 if (inside) return 0x0502;
                 var mode = a | 0;
@@ -349,5 +351,40 @@ EM_JS(int, emuwasm_ffp_command,
         console.warn("emuwasm-ffp: GL WebGL2 pipeline failed", String(error));
         return 0x0502; // GL_INVALID_OPERATION, no success forgery
     }
+});
+
+// Query the actual per-context compatibility state used by the shader pipeline
+// rather than asking WebGL2 for desktop-only matrix/color enums.
+EM_JS(int, emuwasm_ffp_query, (int pname, int address, int outputKind), {
+    var gl = GL.currentContext && GL.currentContext.GLctx;
+    var contexts = Module["emuwasmFFPContexts"];
+    var s = gl && contexts && contexts.get(gl);
+    if (!s || !address || address < 0)
+        return 0;
+    var value;
+    if (pname == 0x0BA6) value = s.matrices[0]; // GL_MODELVIEW_MATRIX
+    else if (pname == 0x0BA7) value = s.matrices[1]; // GL_PROJECTION_MATRIX
+    else if (pname == 0x0BA8) value = s.matrices[2]; // GL_TEXTURE_MATRIX
+    else if (pname == 0x0B00) value = s.color; // GL_CURRENT_COLOR
+    else if (pname == 0x0B03)
+        value = [s.texcoord[0],s.texcoord[1],0,1];
+    else if (pname == 0x0BA0)
+        value = [0x1700 + s.matrixMode]; // GL_MATRIX_MODE
+    else if (pname == 0x0BA3) // MODELVIEW_STACK_DEPTH
+        value = [s.stacks[0].length + 1];
+    else if (pname == 0x0BA4) // PROJECTION_STACK_DEPTH
+        value = [s.stacks[1].length + 1];
+    else if (pname == 0x0BA5) // TEXTURE_STACK_DEPTH
+        value = [s.stacks[2].length + 1];
+    else return 0;
+
+    var bytes = outputKind == 2 ? 4 : outputKind == 1 ? 8 : 4;
+    if (address % bytes || address + value.length*bytes > HEAPU8.length)
+        return 0;
+    var view = outputKind == 2 ? HEAP32 :
+               outputKind == 1 ? HEAPF64 : HEAPF32;
+    for (var i = 0; i < value.length; ++i)
+        view[address / bytes + i] = value[i];
+    return 1;
 });
 #endif // __EMSCRIPTEN__
