@@ -166,6 +166,35 @@
         return originalSend.apply(this, args);
     };
 
+    function glUsageSummary() {
+        if (!window.EmuWasmGLUsage) {
+            return ["GL functions: exporter nao instalado nesta versao."];
+        }
+        try {
+            return [
+                "",
+                "=== TODAS AS FUNCOES GL UTILIZADAS ===",
+                window.EmuWasmGLUsage.formatText(
+                    window.EmuWasmGLUsage.readCounters()
+                ),
+            ];
+        } catch (error) {
+            return ["", "GL functions: " + asText(error)];
+        }
+    }
+
+    function downloadGLFunctions() {
+        try {
+            if (!window.EmuWasmGLUsage)
+                throw new Error("gl_usage.js nao foi carregado.");
+            const snapshot = window.EmuWasmGLUsage.download();
+            append("info", "Dump GL exportado: " + snapshot.usedFunctions +
+                   " funcoes, " + snapshot.totalGuestCalls + " chamadas.");
+        } catch (error) {
+            append("error", "Nao foi possivel dumpear GL: " + asText(error));
+        }
+    }
+
     function downloadLogs() {
         const data = [
             "EmuWasm Browser diagnostics",
@@ -175,7 +204,8 @@
             "Game ZIP requested by BoxedWine: " + observedGameGet,
             "Wine ZIP requested by BoxedWine: " + observedWineGet,
             "",
-            ...ring.map(x => x.time + " " + x.level + " " + x.message)
+            ...ring.map(x => x.time + " " + x.level + " " + x.message),
+            ...glUsageSummary()
         ].join("\n");
         const blob = new Blob([data], { type: "text/plain;charset=utf-8" });
         const url = URL.createObjectURL(blob);
@@ -223,6 +253,11 @@
         button.type = "button";
         button.textContent = "Baixar log";
         button.addEventListener("click", downloadLogs);
+        const glButton = document.createElement("button");
+        glButton.type = "button";
+        glButton.textContent = "Dumpear funcoes OpenGL";
+        glButton.title = "Exportar todas as chamadas GL registradas e sua quantidade";
+        glButton.addEventListener("click", downloadGLFunctions);
         const retryRAM = document.createElement("button");
         retryRAM.type = "button";
         retryRAM.textContent = "Reiniciar sem IndexedDB";
@@ -238,7 +273,7 @@
         back.textContent = "Voltar ao lançador";
         output = document.createElement("pre");
         output.setAttribute("aria-live", "polite");
-        body.append(intro, button, retryRAM, back, output);
+        body.append(intro, button, glButton, retryRAM, back, output);
         panel.append(summary, body);
         document.body.appendChild(panel);
         display();
