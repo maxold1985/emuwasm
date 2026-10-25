@@ -127,7 +127,11 @@ class WineArtifactImportTest(unittest.TestCase):
     def test_invalid_artifact_does_not_replace_existing_wine(self) -> None:
         make_zip(self.wine, {"bin/wine": b"existing"})
         make_zip(self.artifact, {"wrong.txt": b"bad"})
-        self.assertIn("Falha", ensure_local_wine(self.folder))
+        # Existing valid Wine should be used without opening the bad artifact.
+        self.assertIsNone(ensure_local_wine(self.folder))
+        # Directly importing the invalid artifact must still fail safely.
+        with self.assertRaisesRegex(ValueError, "esperado"):
+            import_wine_artifact(self.artifact, self.wine)
         with ZipFile(self.wine) as z:
             self.assertEqual(z.read("bin/wine"), b"existing")
 
