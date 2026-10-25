@@ -46,11 +46,17 @@ class WebGLPatchTest(unittest.TestCase):
             "    EAX=GL_FUNC(ext_glCheckFramebufferStatus)(ARG1);\n"
             "    EAX=GL_FUNC(ext_glCheckFramebufferStatusEXT)(ARG1);\n"
             "    GL_FUNC(ext_glFramebufferTexture2D)(ARG1, ARG2, ARG3, ARG4, ARG5);\n"
-            "    GL_FUNC(ext_glFramebufferRenderbuffer)(ARG1, ARG2, ARG3, ARG4);\n",
+            "    GL_FUNC(ext_glFramebufferTexture2DEXT)(ARG1, ARG2, ARG3, ARG4, ARG5);\n"
+            "    GL_FUNC(ext_glFramebufferRenderbuffer)(ARG1, ARG2, ARG3, ARG4);\n"
+            "    GL_FUNC(ext_glFramebufferRenderbufferEXT)(ARG1, ARG2, ARG3, ARG4);\n",
             encoding="utf-8",
         )
         (gl / "glfunctions_ext2.cpp").write_text(
-            "    GL_FUNC(ext_glRenderbufferStorage)(ARG1, ARG2, ARG3, ARG4);\n",
+            "void glcommon_glRenderbufferStorage(CPU* cpu) {\n"
+            "    GL_FUNC(ext_glRenderbufferStorage)(ARG1, ARG2, ARG3, ARG4);\n"
+            "    GL_FUNC(ext_glRenderbufferStorageEXT)(ARG1, ARG2, ARG3, ARG4);\n"
+            "    GL_FUNC(ext_glRenderbufferStorageMultisample)(ARG1, ARG2, ARG3, ARG4, ARG5);\n"
+            "    GL_FUNC(ext_glRenderbufferStorageMultisampleEXT)(ARG1, ARG2, ARG3, ARG4, ARG5);\n",
             encoding="utf-8",
         )
         (gl / "glCounters.h").write_text(
@@ -70,6 +76,7 @@ class WebGLPatchTest(unittest.TestCase):
             overlay = root / "shim.inc"
             overlay.write_text("// shim fixture\n", encoding="utf-8")
             (root / "emuwasm_gl4es_formats.h").write_text("// mapper fixture\n", encoding="utf-8")
+            (root / "emuwasm_gl4es_framebuffer.h").write_text("// fbo fixture\n", encoding="utf-8")
             patcher.apply(root, overlay)
             self.assertEqual(
                 (gl / "emuwasm_webgl_pixel.inc").read_text(encoding="utf-8"),
@@ -77,6 +84,8 @@ class WebGLPatchTest(unittest.TestCase):
             )
             self.assertEqual((gl / "emuwasm_gl4es_formats.h").read_text(encoding="utf-8"),
                              "// mapper fixture\n")
+            self.assertEqual((gl / "emuwasm_gl4es_framebuffer.h").read_text(encoding="utf-8"),
+                             "// fbo fixture\n")
             callbacks = (gl / "glfunctions.h").read_text(encoding="utf-8")
             self.assertIn("GL_FUNCTION_CUSTOM(TexImage2D", callbacks)
             source = (gl / "glcommon.cpp").read_text(encoding="utf-8")
@@ -92,8 +101,15 @@ class WebGLPatchTest(unittest.TestCase):
             self.assertIn("glCheckFramebufferStatusEXT target=0x%x", fb)
             self.assertIn("emuwasm-webgl: glFramebufferTexture2D target=0x%x", fb)
             self.assertIn("emuwasm-webgl: glFramebufferRenderbuffer target=0x%x", fb)
-            self.assertIn("emuwasm-webgl: glRenderbufferStorage target=0x%x",
-                          (gl / "glfunctions_ext2.cpp").read_text(encoding="utf-8"))
+            storage = (gl / "glfunctions_ext2.cpp").read_text(encoding="utf-8")
+            self.assertIn("emuwasm-webgl: glRenderbufferStorage target=0x%x", storage)
+            self.assertIn('#include "emuwasm_gl4es_framebuffer.h"', storage)
+            self.assertEqual(storage.count("normalize_renderbuffer_format("), 4)
+            self.assertIn("static_cast<GLenum>(rbMapped.internal)", storage)
+            self.assertIn("emuwasm-gl4es: glRenderbufferStorageMultisample", storage)
+            self.assertIn("#else\n    GL_FUNC(ext_glRenderbufferStorage)(ARG1, ARG2, ARG3, ARG4);", storage)
+            self.assertIn("glFramebufferTexture2DEXT target=0x%x", fb)
+            self.assertIn("glFramebufferRenderbufferEXT target=0x%x", fb)
 
     def test_repeated_patch_fails_instead_of_silently_replacing(self):
         with TemporaryDirectory() as temp:
@@ -102,6 +118,7 @@ class WebGLPatchTest(unittest.TestCase):
             overlay = root / "shim.inc"
             overlay.write_text("// shim fixture\n", encoding="utf-8")
             (root / "emuwasm_gl4es_formats.h").write_text("// mapper fixture\n", encoding="utf-8")
+            (root / "emuwasm_gl4es_framebuffer.h").write_text("// fbo fixture\n", encoding="utf-8")
             patcher.apply(root, overlay)
             with self.assertRaisesRegex(RuntimeError, "already patched"):
                 patcher.apply(root, overlay)
