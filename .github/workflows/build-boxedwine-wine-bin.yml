@@ -1,0 +1,70 @@
+name: Build real Wine i386 bin for BoxedWine browser
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-wine-linux-i386:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    steps:
+      - name: Checkout EmuWasm
+        uses: actions/checkout@v4
+        with:
+          path: emuwasm
+      - name: Install Wine i386 cross-architecture build dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential git gcc-multilib g++-multilib libc6-dev-i386 \
+            libx11-dev:i386 libxext-dev:i386 libxrender-dev:i386 \
+            libxrandr-dev:i386 libxi-dev:i386 libxcursor-dev:i386 \
+            libxinerama-dev:i386 libxxf86vm-dev:i386 libfreetype-dev:i386 \
+            libgl-dev:i386 libegl-dev:i386 libvulkan-dev:i386 \
+            libgnutls28-dev:i386 libgstreamer1.0-dev:i386 \
+            libgstreamer-plugins-base1.0-dev:i386 libsdl2-dev:i386 \
+            libfontconfig-dev:i386 pkg-config flex bison fontforge gettext \
+            libsdl2-dev libssl-dev libminizip-dev libcurl4-openssl-dev \
+            zlib1g-dev libgl-dev python3
+      - name: Checkout BoxedWine upstream Wine filesystem builder
+        uses: actions/checkout@v4
+        with:
+          repository: danoon2/Boxedwine
+          ref: master
+          path: boxedwine-upstream
+      - name: Build real Linux i386 Wine 11.0 and complete guest filesystem
+        shell: bash
+        working-directory: boxedwine-upstream/tools/buildWine
+        run: |
+          set -euxo pipefail
+          python3 build_wine.py wine-11.0 --jobs 4 --skip-wineboot
+          test -s Wine-11.0.zip
+      - name: Create browser-compatible boxedwine.zip with genuine /bin/wine
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 emuwasm/scripts/prepare_boxedwine_wine_root.py \
+            --input boxedwine-upstream/tools/buildWine/Wine-11.0.zip \
+            --output boxedwine.zip
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          path = Path("boxedwine.zip")
+          with ZipFile(path) as z:
+              assert "bin/wine" in z.namelist()
+              assert z.read("bin/wine")[:4] == b"\x7fELF"
+              print("OK: bin/wine ELF i386, ZIP bytes:", path.stat().st_size)
+          PY
+      - name: Upload complete Wine Linux filesystem (no game data)
+        uses: actions/upload-artifact@v4
+        with:
+          name: boxedwine-linux-i386-wine11-rootfs
+          path: boxedwine.zip
+          compression-level: 0
+          if-no-files-found: error
