@@ -143,6 +143,51 @@ class LocalHTTPTest(unittest.TestCase):
             urlopen(request, timeout=5)
         self.assertEqual(caught.exception.code, 403)
 
+    def test_head_zip_preflight_does_not_download_entire_game(self) -> None:
+        import io
+        stream = io.BytesIO()
+        with ZipFile(stream, "w") as zf:
+            zf.writestr("prism3d.exe", b"MZ")
+        response, _ = self.call("/api/upload/game", stream.getvalue(), origin=self.base)
+        self.assertEqual(response, 200)
+        req = Request(self.base + "/user-content/prism3d.zip", method="HEAD")
+        with urlopen(req, timeout=5) as result:
+            self.assertEqual(result.status, 200)
+            self.assertEqual(result.headers["Content-Type"], "application/zip")
+            self.assertEqual(int(result.headers["Content-Length"]), len(stream.getvalue()))
+            self.assertEqual(result.read(), b"")
+
+    def test_browser_console_logs_stay_private(self) -> None:
+        import json
+        payload = json.dumps({"events": [
+            {"level": "info", "message": "running initial setup"},
+            {"level": "error", "message": "WebAssembly.RuntimeError: mocked"},
+        ]}).encode("utf-8")
+        code, answer = self.call("/api/browser-log", payload,
+                                 kind="application/json", origin=self.base)
+        self.assertEqual(code, 200, answer)
+        saved = self.server.browser_log.read_text(encoding="utf-8")
+        self.assertIn("running initial setup", saved)
+        self.assertIn("WebAssembly.RuntimeError: mocked", saved)
+        code, _ = self.call("/.local-game-data/.diagnostics/browser-console.log")
+        self.assertEqual(code, 404)
+
+    def test_browser_console_rejects_foreign_origins(self) -> None:
+        import json
+        body = json.dumps({"events": [{"level": "warn", "message": "x"}]}).encode()
+        code, _ = self.call("/api/browser-log", body,
+                             kind="application/json", origin="http://evil.example")
+        self.assertEqual(code, 403)
+
+    def test_browser_console_rejects_too_many_events(self) -> None:
+        import json
+        body = json.dumps({"events": [
+            {"level": "info", "message": "f"} for _ in range(25)
+        ]}).encode()
+        code, _ = self.call("/api/browser-log", body,
+                             kind="application/json", origin=self.base)
+        self.assertEqual(code, 400)
+
     def test_block_cross_origin_upload(self) -> None:
         code, _ = self.call("/api/upload/game", b"ZIP", origin="https://example.com")
         self.assertEqual(code, 403)
