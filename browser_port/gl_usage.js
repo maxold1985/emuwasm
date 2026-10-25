@@ -12,6 +12,43 @@
         return module;
     }
 
+    // Aggregate exact glProcAddressAvailable(name) results recorded in the
+    // active WASM runtime. A callback count alone cannot show which names
+    // Wine requested or which capabilities were rejected.
+    function readProcQueries(module) {
+        const table = module.emuwasmGLProcQueries;
+        if (!table || typeof table !== "object")
+            return { names: 0, requests: 0, found: 0, missing: 0, entries: [] };
+
+        const entries = [];
+        let found = 0;
+        let missing = 0;
+        for (const [name, item] of Object.entries(table)) {
+            if (!/^gl[A-Za-z0-9_]{1,96}$/.test(name) ||
+                !item || typeof item !== "object")
+                continue;
+            const yes = Number(item.found);
+            const no = Number(item.missing);
+            if (!Number.isSafeInteger(yes) || !Number.isSafeInteger(no) ||
+                yes < 0 || no < 0 || yes + no === 0)
+                continue;
+            entries.push({ name, found: yes, missing: no });
+            found += yes;
+            missing += no;
+        }
+        entries.sort((a, b) =>
+            (b.missing - a.missing) ||
+            (b.found - a.found) ||
+            a.name.localeCompare(b.name));
+        return {
+            names: entries.length,
+            requests: found + missing,
+            found,
+            missing,
+            entries,
+        };
+    }
+
     function readCounters(module = getModule()) {
         if (!module || typeof module !== "object")
             throw new Error("Modulo BoxedWine invalido.");
@@ -74,6 +111,7 @@
                      f.name !== "mainThreadDispatches"
             ).length,
             totalGuestCalls: totalCalls.toString(),
+            procQueries: readProcQueries(module),
             functions,
         };
     }
@@ -90,6 +128,23 @@
             "---------------+------------------------------------------",
             ...snapshot.functions.map(
                 f => f.calls.padStart(14) + " | " + f.name + " [id=" + f.index + "]"
+            ),
+            "",
+            "=== FUNCOES CONSULTADAS PELO WineD3D (glProcAddressAvailable) ===",
+            "Este diagnostico mede respostas de disponibilidade, NAO uso da funcao.",
+            "Nomes unicos: " + (snapshot.procQueries?.names ?? 0),
+            "Consultas identificadas: " + (snapshot.procQueries?.requests ?? 0),
+            "Disponiveis: " + (snapshot.procQueries?.found ?? 0),
+            "Indisponiveis: " + (snapshot.procQueries?.missing ?? 0),
+            "",
+            "Status       | Sim   | Nao   | Funcao consultada",
+            "-------------+-------+-------+--------------------------------",
+            ...((snapshot.procQueries?.entries) || []).map(entry =>
+                (entry.missing && !entry.found ? "INDISPONIVEL" :
+                 entry.found && !entry.missing ? "DISPONIVEL" :
+                 "MISTO").padEnd(12) + " | " +
+                String(entry.found).padStart(5) + " | " +
+                String(entry.missing).padStart(5) + " | " + entry.name
             ),
             "",
         ].join("\n");
