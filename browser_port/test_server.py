@@ -9,6 +9,7 @@ import io
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -108,7 +109,7 @@ class WineArtifactImportTest(unittest.TestCase):
             import_wine_artifact(self.artifact, self.wine)
         self.assertFalse(self.wine.exists())
 
-    def test_new_artifact_replaces_old_wine(self) -> None:
+    def test_new_artifact_preserves_existing_valid_wine(self) -> None:
         from io import BytesIO
         make_zip(self.wine, {"bin/wine": b"old"})
         inner = BytesIO()
@@ -116,9 +117,11 @@ class WineArtifactImportTest(unittest.TestCase):
             z.writestr("bin/wine", b"new")
         with ZipFile(self.artifact, "w") as z:
             z.writestr("boxedwine.zip", inner.getvalue())
-        self.assertIsNone(ensure_local_wine(self.folder))
+        # Even a newer artifact must not silently replace an existing upload.
+        with patch("server.os.replace", side_effect=PermissionError(5, "denied")):
+            self.assertIsNone(ensure_local_wine(self.folder))
         with ZipFile(self.wine) as z:
-            self.assertEqual(z.read("bin/wine"), b"new")
+            self.assertEqual(z.read("bin/wine"), b"old")
         self.assertIsNone(ensure_local_wine(self.folder))
 
     def test_invalid_artifact_does_not_replace_existing_wine(self) -> None:
@@ -193,6 +196,39 @@ class LocalHTTPTest(unittest.TestCase):
         code, data = self.call("/user-content/prism3d.zip")
         self.assertEqual(code, 200)
         self.assertGreater(len(data), 10)
+
+    def test_reupload_identical_locked_wine_is_successful(self) -> None:
+        import json
+        archive = io.BytesIO()
+        with ZipFile(archive, "w") as zf:
+            zf.writestr("bin/wine", b"existing guest")
+        original = archive.getvalue()
+        installed = self.server.user_data / "boxedwine.zip"
+        installed.write_bytes(original)
+        # On Windows os.replace would fail if the browser has this ZIP open.
+        # An identical validated ZIP should not attempt to replace it.
+        with patch("server.os.replace", side_effect=PermissionError(5, "Access denied")) as move:
+            code, raw = self.call("/api/upload/wine", original, origin=self.base)
+        self.assertEqual(code, 200, raw)
+        self.assertTrue(json.loads(raw)["reused"])
+        move.assert_not_called()
+        self.assertEqual(installed.read_bytes(), original)
+
+    def test_different_locked_wine_is_preserved_with_actionable_error(self) -> None:
+        import json
+        installed = self.server.user_data / "boxedwine.zip"
+        make_zip(installed, {"bin/wine": b"old Wine"})
+        prior = installed.read_bytes()
+        newer = io.BytesIO()
+        with ZipFile(newer, "w") as zf:
+            zf.writestr("bin/wine", b"new Wine")
+        with patch("server.os.replace", side_effect=PermissionError(5, "Access denied")) as move:
+            code, raw = self.call("/api/upload/wine", newer.getvalue(), origin=self.base)
+        self.assertEqual(code, 409, raw)
+        self.assertIn("WinError 5", json.loads(raw)["error"])
+        self.assertEqual(move.call_count, 3)
+        self.assertEqual(installed.read_bytes(), prior)
+        self.assertFalse(list(self.server.user_data.glob("upload-*.zip")))
 
     def test_existing_invalid_wine_zip_is_detected_by_status(self) -> None:
         import json
