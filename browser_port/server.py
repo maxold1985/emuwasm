@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlsplit
 from zipfile import BadZipFile, ZipFile
+import hashlib
 
 MAX_UPLOAD = 3 * 1024**3  # ZIP bytes; game file packager limits expanded data to <4 GiB.
 MAX_UNCOMPRESSED = 8 * 1024**3
@@ -143,17 +144,24 @@ def ensure_local_wine(user_data: Path) -> str | None:
     No remote requests or GitHub credentials: the artifact must be on disk.
     """
     destination = user_data / ALLOWED_UPLOADS["wine"]
-    if destination.is_file():
-        try:
-            validate_archive(destination, "wine")
-            return None
-        except (ValueError, OSError):
-            pass
     artifact = user_data / WINE_ARTIFACT
     if not artifact.is_file():
         return None
+    # Prefer a newly downloaded build artifact over an older valid ZIP.
+    # Store its digest to avoid re-importing on every HEAD/GET/status request.
+    marker = user_data / ".wine-artifact.sha256"
     try:
+        with artifact.open("rb") as source:
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+        if destination.is_file() and marker.is_file() and marker.read_text().strip() == digest:
+            try:
+                validate_archive(destination, "wine")
+                return None
+            except (ValueError, OSError):
+                pass
         import_wine_artifact(artifact, destination)
+        marker.write_text(digest, encoding="ascii")
+        print(f"[browser-port] Wine importado do artefato local: {artifact.name}", flush=True)
         return None
     except (ValueError, OSError, BadZipFile) as exc:
         return f"Falha ao importar artefato local Wine: {exc}"
